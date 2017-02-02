@@ -1,0 +1,75 @@
++------------------------+
+| Tables_in_elisa_assets |
++------------------------+
+| ck04_intensity         |
+| k93_intensity          |
+| limbdarkening          |
+| passband               |
+| planck_intensity       |
++------------------------+
+
+mysql> describe ck04_intensity;
++-------------+------------------+------+-----+---------+----------------+
+| Field       | Type             | Null | Key | Default | Extra          |
++-------------+------------------+------+-----+---------+----------------+
+| id          | int(10) unsigned | NO   | PRI | NULL    | auto_increment |
+| intensity   | double           | NO   |     | NULL    |                |
+| temperature | float            | NO   |     | NULL    |                |
+| gravity     | float            | NO   |     | NULL    |                |
+| metallicity | float            | NO   |     | NULL    |                |
+| filter      | varchar(100)     | NO   |     | NULL    |                |
++-------------+------------------+------+-----+---------+----------------+
+
+mysql> describe k93_intensity;
++-------------+------------------+------+-----+---------+----------------+
+| Field       | Type             | Null | Key | Default | Extra          |
++-------------+------------------+------+-----+---------+----------------+
+| id          | int(10) unsigned | NO   | PRI | NULL    | auto_increment |
+| intensity   | double           | NO   |     | NULL    |                |
+| temperature | float            | NO   |     | NULL    |                |
+| gravity     | float            | NO   |     | NULL    |                |
+| metallicity | float            | NO   |     | NULL    |                |
+| filter      | varchar(100)     | NO   |     | NULL    |                |
++-------------+------------------+------+-----+---------+----------------+
+
+mysql> describe limbdarkening;
++-------------+------------------+------+-----+---------+----------------+
+| Field       | Type             | Null | Key | Default | Extra          |
++-------------+------------------+------+-----+---------+----------------+
+| id          | int(10) unsigned | NO   | PRI | NULL    | auto_increment |
+| temperature | double           | NO   |     | NULL    |                |
+| gravity     | double           | NO   |     | NULL    |                |
+| metallicity | double           | NO   |     | NULL    |                |
+| filter      | varchar(100)     | NO   |     | NULL    |                |
+| xlin        | double           | NO   |     | NULL    |                |
+| qlin        | double           | NO   |     | NULL    |                |
+| xlog        | double           | NO   |     | NULL    |                |
+| ylog        | double           | NO   |     | NULL    |                |
+| qlog        | double           | NO   |     | NULL    |                |
+| xsqrt       | double           | NO   |     | NULL    |                |
+| ysqrt       | double           | NO   |     | NULL    |                |
+| qsqrt       | double           | NO   |     | NULL    |                |
++-------------+------------------+------+-----+---------+----------------+
+
+mysql> describe passband;
++------------+------------------+------+-----+---------+----------------+
+| Field      | Type             | Null | Key | Default | Extra          |
++------------+------------------+------+-----+---------+----------------+
+| id         | int(10) unsigned | NO   | PRI | NULL    | auto_increment |
+| wavelength | double           | NO   |     | NULL    |                |
+| pass       | double           | NO   |     | NULL    |                |
+| filter     | varchar(100)     | NO   |     | NULL    |                |
++------------+------------------+------+-----+---------+----------------+
+
+mysql> describe planck_intensity;
++-------------+------------------+------+-----+---------+----------------+
+| Field       | Type             | Null | Key | Default | Extra          |
++-------------+------------------+------+-----+---------+----------------+
+| id          | int(10) unsigned | NO   | PRI | NULL    | auto_increment |
+| intensity   | double           | NO   |     | NULL    |                |
+| temperature | float            | NO   |     | NULL    |                |
+| filter      | varchar(100)     | NO   |     | NULL    |                |
++-------------+------------------+------+-----+---------+----------------+
+
+
+

@@ -1,0 +1,4 @@
+>> sudo apt-get install libcgal-dev=4.2-5ubuntu1
+>> sudo apt-get -f install
+again >> sudo apt-get install libcgal-dev=4.2-5ubuntu1
+

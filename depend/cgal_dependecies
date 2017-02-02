@@ -1,0 +1,6 @@
+GMP: sudo apt-get install libgmp3-dev
+MPFR: sudo apt-get install libmpfr-dev libmpfr-doc libmpfr4 libmpfr4-dbg
+QT: sudo apt-get install qt-sdk
+BOOST: sudo apt-get install libboost-all-dev
+EIGEN: sudo apt-get install libeigen3-dev
+

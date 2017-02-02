@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=0.2
+Name=sync
+Comment=Sync files
+Exec=/home/mike/PycharmProjects/ebl_v2/sync.sh
+Terminal=true
+Type=Application
+Categories=Application;
