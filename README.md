@@ -11,7 +11,7 @@
 
 #### Getting Started
 1. Install dependencies
-2. Create MySQL database __elisa_assets__ and load *__/database/mysql_dump/elisa_assets.sql__*
+2. Create MySQL database __elisa_assets__, download and load [database](https://mega.nz/#!7YNUnLBI!d4zzq3HJBPn3LK7H8kHSryPN-xexa6Oh5yVNxbi3WhU)
 3. Change default variables (host, user, password) in *__/globe/variables.py__*, default:
    * HOST = "localhost"
    * USER = "root"
