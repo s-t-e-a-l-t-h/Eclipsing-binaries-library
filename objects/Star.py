@@ -407,7 +407,8 @@ class Star:
             # hodnota, ktora je opat pole [10000.0, 2.0])
             repeated_temperature = Fn.find_repeated_indices(temperature_distribution)
 
-            print(Fn.color_string("info", "Info: ") + "Using black body atmosphere model.")
+            if self.verbose:
+                print(Fn.color_string("info", "Info: ") + "Using black body atmosphere model.")
 
             # flux = []
             # for temperature in self.get_temperature_distribution():

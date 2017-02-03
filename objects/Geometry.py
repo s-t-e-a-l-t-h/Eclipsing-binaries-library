@@ -88,6 +88,7 @@ import intersection.plane_line_3d_intesection as pli
 from scipy.spatial import ConvexHull
 from scipy.spatial import Delaunay
 from copy import copy
+import sys
 
 
 def find_nearest_dist_3d(data=None):
@@ -707,9 +708,25 @@ def eclipse_filter(
 
     # odstranit elementy (wuma problem), ktore neboli vyfiltrovane pri dakrside filtri na zlozke v popredi
 
-
-
-
+    # import matplotlib.pyplot as plt
+    # import matplotlib
+    # from matplotlib.patches import Polygon
+    # from matplotlib.collections import PatchCollection
+    #
+    # fig, ax = plt.subplots()
+    # patches = []
+    # for f in behind["faces2d"]:
+    #     polygon = Polygon(f, True)
+    #     patches.append(polygon)
+    #
+    # p = PatchCollection(patches, cmap=matplotlib.cm.jet, alpha=0.3)
+    # p.set_color("r")
+    # ax.add_collection(p)
+    #
+    # plt.plot(list(zip(*hull_points))[0], list(zip(*hull_points))[1])
+    # plt.axis("equal")
+    # plt.show()
+    # sys.exit()
 
     for f, i, idx in list(zip(behind["faces2d"], range(0, len(behind["faces2d"])), behind["indices"])):
         # test vertices of each face if is inside of bb_path
@@ -745,7 +762,28 @@ def eclipse_filter(
 
             # create entire set of points of face which are outside of boundary and intersection points
             zy = np.concatenate((zy, [f[outside_idx[0]]], [f[outside_idx[1]]]), 0)
-            delaunay_simplices = Delaunay(zy).simplices
+
+            # ak nevie striangulovat, zatial zo skusenosti co mam to robi vtedy, ak je presny zakryt jedna cez druhu,
+            # presne rovnako velke zlozky a numerika zblbne na tom, ze su tam 2x2 rovnake body a triangulacia nezbehne,
+            # lebo na priamke zbehnut nemoze; zatial riesene tak, ze sa vyhodi trojuholnik, ako neviditelny, pretoze ak
+            # by aj treti bod bol mimo, tak by potom bol cely trojuholnik vyhodnoteny ako viditelny a tym padom
+            # by sa vykonavala podmienka == 3 nie == 2
+            try:
+                test_zy = np.round(zy, 10)
+
+                zy_unique = []
+                for x in test_zy:
+                    x = np.array(x).tolist()
+                    if not x in zy_unique:
+                        zy_unique.append(x)
+
+                if len(zy_unique) >= 3:
+                    delaunay_simplices = Delaunay(zy).simplices
+                else:
+                    raise Exception()
+            except:
+                continue
+
             # delaunay_faces = zy[delaunay_simplices]
 
             # faces from 2d to 3d (order with respect to zy list, there was added in the same order)
@@ -821,10 +859,7 @@ def eclipse_filter(
     return_array[2][0] = np.array(return_array[2][0])
     return_array[2][1] = np.array(return_array[2][1])
 
-    import matplotlib.pyplot as plt
-    import matplotlib
-    from matplotlib.patches import Polygon
-    from matplotlib.collections import PatchCollection
+
 
     # fig, ax = plt.subplots()
     #

@@ -43,10 +43,10 @@ class Orbit:
         else:
             self.argument_of_periastron_azimut = 2.0 * np.pi - self.argument_of_periastron
 
-        if inclination < 0 or inclination > np.pi / 2.0:
+        if inclination < 0 or inclination > np.pi:
             if self.verbose:
                 print(Fn.color_string("error",
-                                      "ValueError: ") + "In reference: Geometry, function: rotate_inclination, line: " + str(
+                                      "ValueError: ") + "In reference: Orbit, function: __init__, line: " + str(
                     Fn.lineno()) + " Variable `inclination` is invalid. Use `inclination` in range [0, pi].")
             self.init = False
         else:
@@ -250,18 +250,18 @@ class Orbit:
 
     @classmethod
     def rotate_inclination(cls, inclination=None, verbose=False, arr=None):
-        if inclination < 0 or inclination > np.pi / 2.0:
+        if inclination < 0.0 or inclination > np.pi:
             if verbose:
                 print(Fn.color_string("error",
-                                      "ValueError: ") + "In reference: Geometry, function: rotate_inclination, line: " + str(
+                                      "ValueError: ") + "In reference: Orbit, function: rotate_inclination, line: " + str(
                     Fn.lineno()) + " Variable `inclination` is invalid. Use `inclination` in range [0, pi].")
             return False
 
         if Fn.empty(arr):
             if verbose:
                 print(Fn.color_string("error",
-                                      "EmptyVariableError: ") + "In reference: Geometry, function: rotate_inclination, line: " + str(
-                    Fn.lineno()) + " Variable `arr` is empty.")
+                                      "EmptyVariableError: ") + "In reference: Orbit, function: rotate_inclination, "
+                                                                "line: " + str(Fn.lineno()) + " Variable `arr` is empty.")
             return False
 
         return np.array(
@@ -280,6 +280,9 @@ class Orbit:
             vtr = []
             for vertex in vertices[t_object]:
                 vtr.append(Fn.rotate(angle=rotation_angle, vector=np.array(vertex), inverse=False, axis="z"))
+
+            if inclination_rotation:
+                vtr = cls.rotate_inclination(inclination=inclination, verbose=verbose, arr=vtr)
 
             # local normals to return
             ntr = []

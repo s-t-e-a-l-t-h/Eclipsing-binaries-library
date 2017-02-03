@@ -410,8 +410,8 @@ class Observer:
                                                              zero_point=True, homo=True)
 
                     primary_model, secondary_model = model["primary"], model["secondary"]
-
                     del model
+
                 else:
                     primary_model = \
                         binary_system.get_3d_model_optimized(t_object="primary", actual_distance=1.0,
@@ -431,18 +431,17 @@ class Observer:
 
                 del primary_model, secondary_model
 
-                # <kontrolne plotovanie>
+                # # <kontrolne plotovanie>
                 # Plt.plot_3d(vertices=[primary.get_vertices(), secondary.get_vertices()], normals_view=False,
                 #                 points_view=True, faces_view=False, point_color="r", point_size=3.0,
                 #                 verbose=self.verbose)
-                # < /kontrolne plotovanie>
+                # # < /kontrolne plotovanie>
 
                 # convex hull triangulation
                 triangulation_primary = Geo.convex_hull_triangulation(vertices=primary.get_vertices(),
                                                                       verbose=self.verbose)
                 triangulation_secondary = Geo.convex_hull_triangulation(vertices=secondary.get_vertices(),
                                                                         verbose=self.verbose)
-
 
                 primary.set_faces(faces=triangulation_primary[1])
                 secondary.set_faces(faces=triangulation_secondary[1])
@@ -482,7 +481,8 @@ class Observer:
                 #                 azim=30, elev=30)
 
                 # cgal triangulation
-                # exit(os.path.dirname(os.path.realpath(__file__)))
+                # print(os.path.dirname(os.path.realpath(__file__)))
+                # sys.exit()
 
                 triangulation = Geo.cgal_triangulation(normals=normal_vectors, points=system, verbose=False,
                                                        min_triangle_angle=primary.cgal["min_triangle_angle"],
@@ -723,8 +723,6 @@ class Observer:
                                         rotation_angle=orbital_position[1], inclination_rotation=True,
                                         faces_rotation=True, inclination=orbit.get_inclination(), verbose=False)
 
-
-
                 # <kontrolne plotovanie>
                 # Plt.plot_3d(faces=[act_position[0][0], act_position[0][1]], face_color="w",
                 #                 normals_view=False, points_view=False, faces_view=True, verbose=self.verbose,
@@ -740,7 +738,6 @@ class Observer:
                     Geo.darkside_filter(faces=[act_position[0][0], act_position[0][1]],
                                         normals=[act_position[1][0], act_position[1][1]],
                                         verbose=False)
-
                 # # <kontrolne plotovanie>
                 # Plt.plot_3d(faces=[darksite_filter[0][0], darksite_filter[0][1]], face_color="w",
                 #                 normals_view=False, points_view=False, faces_view=True, verbose=self.verbose,
