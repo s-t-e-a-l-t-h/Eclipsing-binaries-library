@@ -355,7 +355,7 @@ class Binary:
                         print(Fn.color_string(color="info", string="Info: ") + "Detached binary system.")
                 elif (self.primary.filling_factor == 0 and self.secondary.filling_factor < 0) or (
                                 self.primary.filling_factor < 0 and self.secondary.filling_factor == 0):
-                    self.binary_morph = "semi-contact"
+                    self.binary_morph = "semi-detached"
                     if self.verbose:
                         print(Fn.color_string(color="info", string="Info: ") + "Semi-detached binary system.")
                 elif 1 > self.primary.filling_factor > 0:
@@ -1441,6 +1441,11 @@ class Binary:
 
         # computing of separation neck
         if self.binary_morph == "over-contact":
+            # import objects.Plot as Plt
+            # Plt.plot_3d(vertices=[total], normals_view=False,
+            #             points_view=True, faces_view=False, point_color="r", point_size=3.0,
+            #             verbose=self.verbose)
+
             separation, neck_radius = self.get_separation(actual_distance=actual_distance)
             r = min([self.primary.polar_radius, self.secondary.polar_radius])
 
@@ -1526,7 +1531,7 @@ class Binary:
                                                  args=args)
                 # otestuje sa, ci vratena hodnota nie je NaN
                 if not np.isnan(solution):
-                    if max([self.primary.polar_radius, self.primary.polar_radius]) >= solution >= 0:
+                    if max([self.primary.polar_radius, self.secondary.polar_radius]) >= solution >= 0:
                         use = True
                 if use:
                     separation.append([x, solution])
@@ -1545,9 +1550,8 @@ class Binary:
         test = p.deriv(2)(r_crit)
         x_min = [d for d in r_crit[test > 0] if 0.0 < d < 1.0][0]
 
-        # xs = np.arange(0., 1., 0.01)
+        # xs = np.arange(0., 0.7, 0.01)
         # ys = p(xs)
-
         # import matplotlib.pyplot as plt
         # plt.scatter(list(zip(*separation))[0], list(zip(*separation))[1], c="b")
         # plt.plot(xs, ys, c="r")
