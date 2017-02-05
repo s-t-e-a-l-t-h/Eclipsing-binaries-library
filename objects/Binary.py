@@ -295,6 +295,7 @@ class Binary:
 
                 potential_inner = abs(self.potential_value(*argsi))
                 potential_outer = abs(self.potential_value(*argsii))
+
                 # povodne tam boli zaokruhlene hodnoty a mari sa mi, ze na to bol dovod, ked na neho pridem, tak toto
                 # treba odkomentovat a napisat sem ten dovod potential_inner = math.ceil(abs(self.potential_value(*argsi)) * ceil) / ceil
                 # potential_outer	= math.ceil(abs(self.potential_value(*argsii)) * ceil) / ceil
@@ -313,14 +314,19 @@ class Binary:
                                                                                  potential_inner - self.secondary.potential) / (
                                                                                  df_potential)
 
+
                 # otestovanie over-contact systemu, ci je nastaveny spravny potencial, to znamena, ci su oba potencialy
                 # pri tomto systeme totozne ak nie su, tak sa init nastavi na False
                 # !!! TOTO BUDE MOZNO TREBA ZMENIT TAK, ZE AK SA DETEKUJE OVER-CONTACT, TAK AUTOMATICKY NASTAVIT
                 # HODNOTY POTENCIALU NA HODNOTU PRIMARNEJ ZLOZKY [xx.08.2016]
                 # !!! TO JE LEN DETAIL, UVIDI SA AKO SA TO BUDE SPRAVAT A CO EJ VYHODNEJSIE S ODSTUPOM CASU
-                if ((1 > self.secondary.filling_factor > 0) or (
-                                1 > self.primary.filling_factor > 0)) and (
-                            self.primary.filling_factor != self.secondary.filling_factor):
+
+                # musi to byt zaukruhlovane, lebo sa stalo, ze jedna hviezda mala byt presne v laloku a samozrejme
+                # numerika je svian a filling_factor bol 1e-15, a toto sa tu vyhodnotilo jak spravne
+
+                if ((1 > round(self.secondary.filling_factor, 10) > 0) or (
+                                1 > round(self.primary.filling_factor, 10) > 0)) and (
+                            round(self.primary.filling_factor, 10) != round(self.secondary.filling_factor, 10)):
                     self.init = False
                     if self.verbose:
                         print(Fn.color_string(color="error",
@@ -353,8 +359,8 @@ class Binary:
                     self.binary_morph = "detached"
                     if self.verbose:
                         print(Fn.color_string(color="info", string="Info: ") + "Detached binary system.")
-                elif (self.primary.filling_factor == 0 and self.secondary.filling_factor < 0) or (
-                                self.primary.filling_factor < 0 and self.secondary.filling_factor == 0):
+                elif (round(self.primary.filling_factor, 10) == 0 and self.secondary.filling_factor < 0) or (
+                                self.primary.filling_factor < 0 and round(self.secondary.filling_factor, 10) == 0):
                     self.binary_morph = "semi-detached"
                     if self.verbose:
                         print(Fn.color_string(color="info", string="Info: ") + "Semi-detached binary system.")
@@ -369,7 +375,6 @@ class Binary:
             else:
                 self.binary_morph = "WARNING, NOT CIRCULAR ORBIT"
             # /filling factor or critical potential
-
 
             # ak nie je aspon jeden z polarnych polomerov hviezd spocitany, premenna init sa nastavi na False
             # ak totiz nedoslo k ich zrataniu, pravdepodobne je to sposobene zlymi vstupnymi parametrami, su nefyzikalne
