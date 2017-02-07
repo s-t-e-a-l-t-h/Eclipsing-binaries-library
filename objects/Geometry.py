@@ -645,9 +645,7 @@ def darkside_filter(
 
     return [np.array(faces_filtered), np.array(normals_filtered), np.array(indices_filtered)]
 
-
 def eclipse_filter(
-        normals=None,
         indices=None,
         vertices=None,
         simplices=None,
@@ -672,18 +670,30 @@ def eclipse_filter(
 
     front = {"faces": np.array(vertices[f])[simplices[f]],
              "faces2d": None,
-             "norms": normals[f],
              "indices": indices[f],
              "vertices": vertices[f],
              "vertices2d": None,
              "simplices": simplices[f]}
     behind = {"faces": np.array(vertices[b])[simplices[b]],
               "faces2d": None,
-              "norms": normals[b],
               "indices": indices[b],
               "vertices": vertices[b],
               "vertices2d": None,
               "simplices": simplices[b]}
+    # import pickle
+    # front, behind = None, None
+    # front = pickle.load(open("front.p", "rb"))
+    # behind = pickle.load(open("behind.p", "rb"))
+
+    # import objects.Plot as Plt
+    # Plt.plot_3d(normals=None, vertices=[front["vertices"], behind["vertices"]], faces=None, face_color="w", normals_view=False,
+    #             points_view=True, faces_view=False, point_color="r", normal_color="w", point_size=3., verbose=True,
+    #             face_alpha=1., azim=0, elev=0)
+
+    # Plt.plot_3d(normals=None, vertices=None, faces=[front["faces"], behind["faces"]], face_color="w",
+    #             normals_view=False,
+    #             points_view=False, faces_view=True, point_color="r", normal_color="w", point_size=3., verbose=True,
+    #             face_alpha=1., azim=0, elev=0)
 
     # projekcia do roviny zy
     front["faces2d"] = [[np.array([v[1], v[2]]) for v in f] for f in front["faces"]]
@@ -696,7 +706,7 @@ def eclipse_filter(
     behind["vertices2d"] = [[f[1], f[2]]
                            for f in np.array(behind["vertices"])[np.unique(behind["simplices"])]]
 
-    # boundary of fron object
+    # boundary of front object
     bound = ConvexHull(front["vertices2d"])
     hull_points = Fn.array_mask(front["vertices2d"], bound.vertices)
     bb_path = mpltpath.Path(np.array(hull_points))
@@ -706,14 +716,41 @@ def eclipse_filter(
                                                                                      verbose=verbose)
     return_array[2][f] = front["faces"]
 
-    # odstranit elementy (wuma problem), ktore neboli vyfiltrovane pri dakrside filtri na zlozke v popredi
+    # self test front objektu na vastny prekryv (pri wuma sa to stava)
+    if False:
+        front_idx, front_faces, front_faces_2d, front_simplices = [], [], [], []
+        for f, i, idx in list(zip(front["faces2d"], range(0, len(front["faces2d"])), front["indices"])):
+            if front["faces"][i][0][0] < 0 and front["faces"][i][1][0] < 0 and front["faces"][i][2][0]:
+                p_inside = [bb_path.contains_points([p])[0] for p in f]
+                outside = [None for j in p_inside if j == False]
+                if len(outside) == 0:
+                    continue
 
-    # import matplotlib.pyplot as plt
-    # import matplotlib
-    # from matplotlib.patches import Polygon
-    # from matplotlib.collections import PatchCollection
-    #
+            front_idx.append(i)
+            front_faces.append(front["faces"][i])
+            front_faces_2d.append(front["faces2d"][i])
+            front_simplices.append(front["simplices"][i])
+
+        front["indices"] = copy(front_idx)
+        del front_idx
+        front["faces"] = copy(front_faces)
+        del front_faces
+        front["faces2d"] = copy(front_faces_2d)
+        del front_faces_2d
+        front["simplices"] = copy(front_simplices)
+        del front_simplices
+        front["vertices2d"] = [[f[1], f[2]]
+                               for f in np.array(front["vertices"])[np.unique(front["simplices"])]]
+
+
+
+    import matplotlib.pyplot as plt
+    import matplotlib
+    from matplotlib.patches import Polygon
+    from matplotlib.collections import PatchCollection
+
     # fig, ax = plt.subplots()
+    #
     # patches = []
     # for f in behind["faces2d"]:
     #     polygon = Polygon(f, True)
@@ -723,10 +760,22 @@ def eclipse_filter(
     # p.set_color("r")
     # ax.add_collection(p)
     #
+    # patches = []
+    # for f in front["faces2d"]:
+    #     polygon = Polygon(f, True)
+    #     patches.append(polygon)
+    #
+    # p = PatchCollection(patches, cmap=matplotlib.cm.jet, alpha=0.3)
+    # p.set_color("b")
+    # ax.add_collection(p)
+    #
     # plt.plot(list(zip(*hull_points))[0], list(zip(*hull_points))[1])
     # plt.axis("equal")
+    # # sys.exit()
     # plt.show()
-    # sys.exit()
+
+    add_t = []
+    icka = []
 
     for f, i, idx in list(zip(behind["faces2d"], range(0, len(behind["faces2d"])), behind["indices"])):
         # test vertices of each face if is inside of bb_path
@@ -737,9 +786,13 @@ def eclipse_filter(
             return_array[0][b].append(idx)
             return_array[1][b].append(triangle_surface_area(triangle=[behind["faces"][i]], verbose=verbose)[0])
             return_array[2][b].append(behind["faces"][i])
+            icka.append(i)
 
         elif len(outside) == 2:
             # len jeden bod je v zakryte
+
+            # # otestovat, ci v ramci presnosti nie je priemet uz len useckou
+            # f_points_rounded = [np.round(x, 10) for x in f]
 
             # identifikacia indexof faziet podla polohy (v zakryte / mimo zakryt)
             inside_idx = Fn.indices(p_inside, True)[0]
@@ -749,19 +802,35 @@ def eclipse_filter(
             segments = np.array([[f[inside_idx], f[outside_idx[0]]], [f[inside_idx], f[outside_idx[1]]]])
 
             # test first and second face segment with boundary
-            zy = []
+            zy, intersection_detected = [], False
             for seg in range(0, 2):
-                # iterate huull_points (boundary)
+                # iterate hull_points (boundary)
                 for x in range(-1, len(hull_points) - 1):
                     b_segment = [hull_points[x], hull_points[x + 1]]
                     intersection = ei.edge_intersection_2d(b_segment[0], b_segment[1],
                                                            segments[seg][0], segments[seg][1])
                     if not intersection[1] != True:
                         zy.append([intersection[2], intersection[3]])
+                        intersection_detected = True
                         break
 
-            # create entire set of points of face which are outside of boundary and intersection points
-            zy = np.concatenate((zy, [f[outside_idx[0]]], [f[outside_idx[1]]]), 0)
+            # ak nebola detegovana intersekcia a 2 body su mimo, tak potom to vyzera tak,
+            # ze cely troj. je viditelny
+            if not intersection_detected:
+                # p = PatchCollection([Polygon(f, True)], cmap=matplotlib.cm.jet, alpha=1.0)
+                # p.set_color("c")
+                # ax.add_collection(p)
+                # plt.show()
+
+                return_array[0][b].append(idx)
+                return_array[1][b].append(triangle_surface_area(triangle=[behind["faces"][i]], verbose=verbose)[0])
+                return_array[2][b].append(behind["faces"][i])
+                icka.append(i)
+                continue
+
+            else:
+                # create entire set of points of face which are outside of boundary and intersection points
+                zy = np.concatenate((zy, [f[outside_idx[0]]], [f[outside_idx[1]]]), 0)
 
             # ak nevie striangulovat, zatial zo skusenosti co mam to robi vtedy, ak je presny zakryt jedna cez druhu,
             # presne rovnako velke zlozky a numerika zblbne na tom, ze su tam 2x2 rovnake body a triangulacia nezbehne,
@@ -770,7 +839,6 @@ def eclipse_filter(
             # by sa vykonavala podmienka == 3 nie == 2
             try:
                 test_zy = np.round(zy, 10)
-
                 zy_unique = []
                 for x in test_zy:
                     x = np.array(x).tolist()
@@ -789,6 +857,8 @@ def eclipse_filter(
             # faces from 2d to 3d (order with respect to zy list, there was added in the same order)
             delaunay_vertices_3d = [None, None, behind["faces"][i][outside_idx[0]], behind["faces"][i][outside_idx[1]]]
 
+            for x in np.array(zy)[delaunay_simplices]:
+                add_t.append(x)
 
             # najdenie 3d projekcie zodpovedajucej 2d bodu v priesecniku boundary so segmentami fazety
             # planeline_intersection berie na vstup
@@ -816,11 +886,12 @@ def eclipse_filter(
                 return_array[2][b].append(t)
 
         elif len(outside) == 1:
+
             inside_idx = Fn.indices(p_inside, True)
             outside_idx = Fn.indices(p_inside, False)[0]
             segments = [[f[outside_idx], f[inside_idx[0]]], [f[outside_idx], f[inside_idx[1]]]]
 
-            zy = []
+            zy, intersection_detected = [], [False, False]
 
             for seg in range(0, 2):
                 for x in range(-1, len(hull_points) - 1):
@@ -829,12 +900,33 @@ def eclipse_filter(
                                                            segments[seg][0], segments[seg][1])
                     if not intersection[1] != True:
                         zy.append([intersection[2], intersection[3]])
+                        intersection_detected[seg] = True
                         break
+
+            # ak nie je najdeny ani jeden prienik v useckach, tak v tomto pripade je tam problem numeriky
+            # a kedze dva body su vnutri boundary, ale nemaju priesecnik, tak su teda na hranici presne a teda patria
+            # behind objektu (troj. je viditelny kompletne cely)
+            if not intersection_detected[0] and not intersection_detected[1]:
+                return_array[0][b].append(idx)
+                return_array[1][b].append(triangle_surface_area(triangle=[behind["faces"][i]], verbose=verbose)[0])
+                return_array[2][b].append(behind["faces"][i])
+                icka.append(i)
+                continue
+            # prosta logika, ak su dva podla b_path vnutri, ale nasiel som len jeden priesecnik, tak jeden bod je presne
+            # na hranici a zblbla numerika, ci uz v b_path alebo u mna; tak ci onak je potrebne pripojit ten bod, ktory
+            # je hranicny na tvrdo ku zy polu
+            elif (intersection_detected[0] and not intersection_detected[1]
+                  ) or intersection_detected[1] and not intersection_detected[0]:
+                for seg in range(0, 2):
+                    if not intersection_detected[seg]:
+                        zy.append(segments[seg][1])
 
             zy = np.concatenate((zy, [f[outside_idx]]), 0)
 
             # len jeden index je mimo v takomto pripade a +2 priesecniky automaticky urcuju trojuholnik
             delaunay_faces_3d = [None, None, behind["faces"][i][outside_idx]]
+
+            addt = [None, None, behind["faces2d"][i][outside_idx]]
 
             # najst priesecnik v 3d priestore pre body na hranici
             for inter, order in list(zip(zy[0:2], range(0, 2))):
@@ -845,13 +937,17 @@ def eclipse_filter(
                                                                    np.array(behind["faces"][i][outside_idx]) -
                                                                    np.array(behind["faces"][i][inside_idx[1]])))
                 delaunay_faces_3d[order] = intersection
+                addt[order] = [intersection[1], intersection[2]]
+
+            add_t.append(addt)
+
 
             return_array[0][b].append(idx)
             return_array[1][b].append(triangle_surface_area(triangle=[delaunay_faces_3d], verbose=verbose)[0])
             return_array[2][b].append(delaunay_faces_3d)
 
 
-    # prekonvertovanie vsetkeho an numpy aray
+    # prekonvertovanie vsetkeho na numpy array
     return_array[0][0] = np.array(return_array[0][0])
     return_array[0][1] = np.array(return_array[0][1])
     return_array[1][0] = np.array(return_array[1][0])
@@ -860,36 +956,54 @@ def eclipse_filter(
     return_array[2][1] = np.array(return_array[2][1])
 
 
+    fig, ax = plt.subplots()
 
-    # fig, ax = plt.subplots()
-    #
-    # patches = []
-    # for f in behind["faces2d"]:
-    #     polygon = Polygon(f, True)
-    #     patches.append(polygon)
-    #
-    # p = PatchCollection(patches, cmap=matplotlib.cm.jet, alpha=0.3)
-    # p.set_color("r")
-    # ax.add_collection(p)
-    #
-    # patches = []
-    # for f in front["faces2d"]:
-    #     polygon = Polygon(f, True)
-    #     patches.append(polygon)
-    #
-    # p = PatchCollection(patches, cmap=matplotlib.cm.jet, alpha=0.3)
-    # p.set_color("b")
-    # ax.add_collection(p)
-    #
-    # # colors = 100 * np.random.rand(len(patches))
-    # # p.set_array(np.array(colors))
-    #
-    # ax.add_collection(p)
-    # ax.set_xlim([-.5, .5])
-    # ax.set_ylim([-.5, .5])
-    # plt.gca().set_aspect('equal')
-    #
-    # plt.show()
+    patches = []
+    for f in return_array[2][b]:
+        f = [[x[1], x[2]] for x in f]
+        polygon = Polygon(f, True, edgecolor="k")
+        patches.append(polygon)
+
+    p = PatchCollection(patches, alpha=0.3, edgecolors="k")
+    p.set_color("c")
+    ax.add_collection(p)
+
+    patches = []
+    for f in np.array(behind["faces2d"]):
+        polygon = Polygon(f, True)
+        patches.append(polygon)
+
+    p = PatchCollection(patches, cmap=matplotlib.cm.jet, alpha=0.3)
+    p.set_color("r")
+    ax.add_collection(p)
+
+    patches = []
+    for f in front["faces2d"]:
+        polygon = Polygon(f, True)
+        patches.append(polygon)
+
+    p = PatchCollection(patches, cmap=matplotlib.cm.jet, alpha=0.3)
+    p.set_color("b")
+    ax.add_collection(p)
+
+    patches = []
+    for f in add_t:
+        polygon = Polygon(f, True)
+        patches.append(polygon)
+
+    p = PatchCollection(patches, cmap=matplotlib.cm.jet, alpha=0.3)
+    p.set_color("g")
+    ax.add_collection(p)
+
+    # colors = 100 * np.random.rand(len(patches))
+    # p.set_array(np.array(colors))
+
+    ax.add_collection(p)
+    ax.set_xlim([-.5, .5])
+    ax.set_ylim([-.5, .5])
+    plt.gca().set_aspect('equal')
+
+    plt.show()
 
     del(front, behind, bb_path, hull_points)
     return return_array
@@ -1348,3 +1462,4 @@ def cgal_separation(cgal_simplex=None, x_separation=None):
     output["vertices"]["secondary"] = np.array(output["vertices"]["secondary"])
 
     return output
+
