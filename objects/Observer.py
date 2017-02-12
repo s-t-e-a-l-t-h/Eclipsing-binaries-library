@@ -12,6 +12,7 @@ import globe.variables as gv
 import os
 import objects.Lightcurve as Lc
 import objects.Iostream as Io
+from objects.Timer import  Timer
 
 
 class Observer:
@@ -42,7 +43,7 @@ class Observer:
         if passband in self.passband_list:
             self.passband = passband
 
-            # IMPORTANT: toto je dolezite, tu sa do premennej self.passband_model zapise cela funkcia (cely pointer),
+            # IMPORTANT: toto je dolezite, tu sa do premennej self.passband_model za`se cela funkcia (cely pointer),
             # takze sa potom da volat normalne self.passband_model(var)
             self.set_passband_model()
             self.set_passband_range()
@@ -363,11 +364,13 @@ class Observer:
         import objects.Geometry as Geo
         import objects.Plot as Plt
 
+
         binary_system = self.observe
         primary = binary_system.primary
         secondary = binary_system.secondary
         orbit = binary_system.orbit
         lightcurve = []
+
         # tu natvrdo zadefinujem spots na False, lebo ked to budem v buducnosti riesit, aby na to bol kod uz
         # opodmienkovany
         spots = False
@@ -387,6 +390,10 @@ class Observer:
         else:
             ffp, tfp = 0.0, 0.5
 
+        # zbuffer
+        zbuffer = postprocess_params["zbuffer"]
+
+
         orbital_motion = orbit.orbital_motion_beta(
             from_photometric_phase=ffp, to_photometric_phase=tfp, n=lightcurve_params["n"],
             adaptive_multiplicator=lightcurve_params["adaptive_multiplicator"],
@@ -400,7 +407,7 @@ class Observer:
         if orbit.eccentricity == 0.0 and primary.synchronicity_parameter == 1.0 and secondary.synchronicity_parameter == 1.0:
             #             zp = False if binary_system.binary_morph == "over-contact" else True
 
-            if binary_system.binary_morph == "detached" or binary_system.binary_morph == "semi-contact":
+            if binary_system.binary_morph == "detached" or binary_system.binary_morph == "semi-detached":
                 if starmodel_params["homo"]:
                     model = \
                         binary_system.get_3d_model_optimized(t_object="both", actual_distance=1.0,
@@ -451,13 +458,14 @@ class Observer:
 
                 del triangulation_primary, triangulation_secondary
 
-                # <kontrolne plotovanie>
+                # # <kontrolne plotovanie>
                 # Plt.plot_3d(faces=[primary.get_faces(), secondary.get_faces()], face_color="w",
                 #                 normals_view=False, points_view=False, faces_view=True, verbose=self.verbose,
-                #                 face_alpha=1.0, azim=30, elev=30, save=True,
+                #                 face_alpha=1.0, azim=30, elev=30, save=False,
                 #             filename="./out/" + str(primary.effective_temperature) + "_" + str(primary.potential) + "_" + str(primary.mass) + "___" +
                 #      str(secondary.effective_temperature) + "_" + str(secondary.potential) + "_" + str(secondary.mass) + "---" + str(orbit.orbital_period))
-                # < /kontrolne plotovanie>
+                # exit()
+                # # < /kontrolne plotovanie>
             elif binary_system.binary_morph == "over-contact":
                 # doplnit triangulaciu pre over-contact
                 model = \
@@ -468,6 +476,12 @@ class Observer:
                                                          zero_point=False, homo=True)
                 system, x_separation = model["system"], model["separation"]
                 del model
+
+                # # <kontrolne plotovanie>
+                # Plt.plot_3d(vertices=[system], normals_view=False,
+                #                 points_view=True, faces_view=False, point_color="r", point_size=3.0,
+                #                 verbose=self.verbose)
+                # # < /kontrolne plotovanie>
 
                 # normals necessary for triangulation
                 normal_vectors = \
@@ -490,6 +504,12 @@ class Observer:
                                                        surface_aproximation_error=primary.cgal[
                                                            "surface_aproximation_error"],
                                                        to_average_spacing=primary.cgal["to_average_spacing"])
+
+                # # <kontrolne plotovanie>
+                # Plt.plot_3d(faces=[triangulation[1]], face_color="w",
+                #                 normals_view=False, points_view=False, faces_view=True, verbose=self.verbose,
+                #                 face_alpha=1.0, azim=30, elev=30)
+                # # < /kontrolne plotovanie>
 
                 triangulation = Geo.cgal_separation(cgal_simplex=triangulation, x_separation=x_separation)
 
@@ -580,6 +600,7 @@ class Observer:
 
             primary.gravity_darkening_factor_distribution()
             secondary.gravity_darkening_factor_distribution()
+
 
             primary.compute_polar_temperature()
             secondary.compute_polar_temperature()
@@ -715,6 +736,8 @@ class Observer:
                     sys.stdout.flush()
                     percentage += percentage_step
 
+                # orbital_position[1] = np.pi - (np.pi / 10)
+
                 act_position = \
                     orbit.rotate_system(faces=[primary.get_faces(), secondary.get_faces()],
                                         normals=[primary.get_faces_orientation(),
@@ -723,12 +746,12 @@ class Observer:
                                         rotation_angle=orbital_position[1], inclination_rotation=True,
                                         faces_rotation=True, inclination=orbit.get_inclination(), verbose=False)
 
-                # <kontrolne plotovanie>
+                # # <kontrolne plotovanie>
                 # Plt.plot_3d(faces=[act_position[0][0], act_position[0][1]], face_color="w",
                 #                 normals_view=False, points_view=False, faces_view=True, verbose=self.verbose,
                 #                 face_alpha=1.0, azim=0, elev=0)
-                # break
-                # < /kontrolne plotovanie>
+                # exit()
+                # # < /kontrolne plotovanie>
 
 
                 # darkside_filter() vrati hodnoty v tvare
@@ -746,14 +769,15 @@ class Observer:
 
                 # eclipse_filter() vrati hodnoty v tvare
                 # [idx of visible faces [primary, secondary], surface are of those faces [primary, secondary]]
-
+                #
                 eclipse_filter = \
-                    Geo.eclipse_filter(normals=[darksite_filter[1][0], darksite_filter[1][1]],
-                                       indices=[darksite_filter[2][0], darksite_filter[2][1]],
+                    Geo.eclipse_filter(indices=[darksite_filter[2][0], darksite_filter[2][1]],
                                        vertices=[act_position[2][0], act_position[2][1]],
                                        simplices=[Fn.array_mask(primary.get_simplices(), darksite_filter[2][0]),
                                                   Fn.array_mask(secondary.get_simplices(), darksite_filter[2][1])],
-                                       orbital_angle=orbital_position[1], verbose=False)
+                                       orbital_angle=orbital_position[1], verbose=False, zbuffer=zbuffer,
+                                       resolution=500)
+
 
                 # ak nie je viditelna ziadna zlozka, tak plocha sa nastavi na False, potom sa to dalej vyuzije
                 surface_primary = False if len(eclipse_filter[0][0]) == 0 else eclipse_filter[1][0]
@@ -892,9 +916,11 @@ class Observer:
 
     @classmethod
     def compute_flux(cls, e_limb_darkening_factor=None, e_surface=None, e_flux=None):
-        flux = 0.0
-        for ldf, gamma, s, f in list(zip(e_limb_darkening_factor[0], e_limb_darkening_factor[1], e_surface, e_flux)):
-            flux += ldf * np.cos(gamma) * f * s
+        # flux = 0.0
+        # for ldf, gamma, s, f in list(zip(e_limb_darkening_factor[0], e_limb_darkening_factor[1], e_surface, e_flux)):
+        #     flux += ldf * np.cos(gamma) * f * s
+        flux = np.sum(np.array(e_limb_darkening_factor[0]) * np.array(e_surface) * np.array(e_flux) * np.cos(
+            np.array(e_limb_darkening_factor[1])))
         return flux
 
     def get_exception(self):
