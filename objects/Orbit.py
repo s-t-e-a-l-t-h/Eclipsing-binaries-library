@@ -85,8 +85,14 @@ class Orbit:
 
             self.true_phase_of_periastron = [self.conjuction[0]["true_phase"], self.conjuction[1]["true_phase"]]
 
+            # standardne by tam ako shift slo self.true_phase_of_periastron[0] a vod 0.0 do 0.0 fotometrickej fazy
+            # by zratalo polohu prave pre 0.0 fotometrickej, lenze ja chcem periastrum, tak to oblenem,
+            # ze sa shiftnem o nulu od nuly fotometrickej, teda vypocet bude vychadzat z nuly a M_c = 0 len ak
+            # ak sme na priamke apsid a teda v periastre;
+            # keby som sa posunul o skutocnu fazu periastra od nuly (mysli sa casovy shift), tak sa posuniem v case
+            # prave na M_c konjunkcie a to nechcem
             self.periastron_distance = self.orbital_motion(photometric_phase_from=0.0, photometric_phase_to=0.0,
-                                                           shift=self.true_phase_of_periastron[0],
+                                                           shift=0.0,# self.true_phase_of_periastron[0],
                                                            photometric_phase_step=1.0, eccentricity=self.eccentricity,
                                                            argument_of_periastron=self.argument_of_periastron)[0][0]
         except:
@@ -135,7 +141,8 @@ class Orbit:
             print('/' + str(self.__class__.__name__) + ' -----------------------------------------------')
 
     def angular_velocity(self):
-        return ((2.0 * np.pi) / (self.orbital_period * 86400.0)) * np.sqrt(
+        actual_distance = 1.0
+        return ((2.0 * np.pi) / (self.orbital_period * 86400.0 * (actual_distance ** 2))) * np.sqrt(
             (1.0 - self.eccentricity) * (1.0 + self.eccentricity))
 
     @classmethod
@@ -203,6 +210,7 @@ class Orbit:
             # stredna anomalia konjunkcie, merana od apsidalnej priamky
             mean_anomaly_of_conjunction = eccentric_anomaly_of_conjunction - eccentricity * np.sin(
                 eccentric_anomaly_of_conjunction)
+
             if mean_anomaly_of_conjunction < 0:
                 mean_anomaly_of_conjunction += 2.0 * np.pi
 
@@ -227,9 +235,11 @@ class Orbit:
             if phase > photometric_phase_to: break
 
             true_phase = cls.true_phase(photometric_phase=phase, shift=shift)
+
             # toto prerobi cislo vacsie ako 1.0 na desatine, napr 1.1 na 0.1
             if abs(true_phase) > 1: true_phase = math.modf(true_phase)[0]
-            if true_phase < 0: true_phase += 1.0
+            while true_phase < 0:
+                true_phase += 1.0
 
             mean_anomaly = cls.mean_anomaly(phase=true_phase)
             eccentric_anomaly = cls.eccentric_anomaly(eccentricity=eccentricity, mean_anomaly=mean_anomaly)
@@ -277,17 +287,15 @@ class Orbit:
         normals_to_return, faces_to_return, vertices_to_return = [], [], []
         for t_object in range(0, len(normals)):
             # local vertices to return
-            vtr = []
-            for vertex in vertices[t_object]:
-                vtr.append(Fn.rotate(angle=rotation_angle, vector=np.array(vertex), inverse=False, axis="z"))
+            vtr = [Fn.rotate(angle=rotation_angle, vector=np.array(vertex), inverse=False, axis="z")
+                   for vertex in vertices[t_object]]
 
             if inclination_rotation:
                 vtr = cls.rotate_inclination(inclination=inclination, verbose=verbose, arr=vtr)
 
             # local normals to return
-            ntr = []
-            for normal in normals[t_object]:
-                ntr.append(Fn.rotate(angle=rotation_angle, vector=np.array(normal), inverse=False, axis="z"))
+            ntr = [Fn.rotate(angle=rotation_angle, vector=np.array(normal), inverse=False, axis="z")
+                   for normal in normals[t_object]]
 
             if inclination_rotation:
                 ntr = cls.rotate_inclination(inclination=inclination, verbose=verbose, arr=ntr)
@@ -296,10 +304,8 @@ class Orbit:
             # trojuholnik otocit, staci vediet, o ktory sa jedna
             ftr = []
             if faces_rotation:
-                for face in faces[t_object]:
-                    ftr.append(np.array(
-                        [Fn.rotate(angle=rotation_angle, vector=np.array(face[i]), inverse=False, axis="z") for i in
-                         range(0, 3)]))
+                ftr = [np.array([Fn.rotate(angle=rotation_angle, vector=np.array(face[i]), inverse=False, axis="z")
+                                 for i in range(0, 3)]) for face in faces[t_object]]
 
                 if inclination_rotation:
                     ftr = cls.rotate_inclination(inclination=inclination, verbose=verbose,
@@ -313,7 +319,6 @@ class Orbit:
             normals_to_return.append(np.array(ntr))
             faces_to_return.append(np.array(ftr))
 
-        #
         #     # normals_to_return = np.array([])
         return [np.array(faces_to_return), np.array(normals_to_return), np.array(vertices_to_return)]
 
