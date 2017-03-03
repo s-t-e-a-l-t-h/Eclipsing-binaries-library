@@ -61,7 +61,7 @@ lc = observer.compute_lightcurve(
                        "adaptive_orbit_part": 0.05,
                        "adaptive_multiplicator": 5.0},
     starmodel_params={"critical_angle": np.pi / 4.0, "homo": True},
-    postprocess_params={"gaussian_smooth": True, "fix_minima": True}
+    postprocess_params={"gaussian_smooth": True, "fix_minima": True, "zbuffer": True, "mirroring": True}
     # limb_darkening_params={"temperature_primary": 5000.0, "temperature_secondary": 5000.0,
     #                       "gravity_primary": 10**4.0, "gravity_secondary": 10**4.0,
     #                       "metallicity_primary": 0.0, "metallicity_secondary": 0.0}
