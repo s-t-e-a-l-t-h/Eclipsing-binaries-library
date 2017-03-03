@@ -20,4 +20,11 @@
 
 
 In case of any questions, coments or concerns, please contact me on stealth.on.github[gmail.com].
+
+
+![alt tag](https://github.com/s-t-e-a-l-t-h/Eclipsing-binaries-library/blob/master/img/figure_1.png)
+![alt tag](https://github.com/s-t-e-a-l-t-h/Eclipsing-binaries-library/blob/master/img/figure_2.png)
+![alt tag](https://github.com/s-t-e-a-l-t-h/Eclipsing-binaries-library/blob/master/img/figure_3.png)
+![alt tag](https://github.com/s-t-e-a-l-t-h/Eclipsing-binaries-library/blob/master/img/figure_4.png)
+![alt tag](https://github.com/s-t-e-a-l-t-h/Eclipsing-binaries-library/blob/master/img/figure_5.png)
             
