@@ -87,11 +87,10 @@ def fill_triangle(face=None, boundary=None, d=None):
     face.sort(key=lambda i: i[1], reverse=True)
 
     if face[0][1] == face[1][1]:
-        fill_top_flat_triangle(face=face, boundary=boundary, d=d)
+        return fill_top_flat_triangle(face=face, boundary=boundary, d=d)
     elif face[1][1] == face[2][1]:
-        fill_bottom_flat_triangle(face=face, boundary=boundary, d=d)
+        return fill_bottom_flat_triangle(face=face, boundary=boundary, d=d)
     else:
-
         x = face[0][0] + ((face[1][1] - face[0][1]) / (face[2][1] - face[0][1])) * (face[2][0] - face[0][0])
         face_top_flat, face_bottom_flat = [face[1], face[2], [x, face[1][1]]], [face[0], face[1], [x, face[1][1]]]
 
@@ -103,4 +102,7 @@ def fill_triangle(face=None, boundary=None, d=None):
             return b
         elif Fn.empty(b) and not Fn.empty(a):
             return a
+        elif Fn.empty(a) and Fn.empty(b):
+            return np.array([])
+
         return np.concatenate((a, b), 0)
