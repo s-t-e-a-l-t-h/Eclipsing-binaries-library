@@ -85,6 +85,11 @@ def figure_axis_range(arr):
     for obj in arr:
         ma = np.amax(obj)
         mi = np.amin(obj)
+        
+        if type(ma) == type([]) or type(ma) == type(np.array([])):
+            ma = np.amax(ma)
+            mi = np.amin(mi)
+
         if ma > maxim: maxim = ma
         if mi < minim: minim = mi
         # if abs(mi) > maxim: maxim = abs(mi)

@@ -248,12 +248,12 @@ class Orbit:
             if true_anomaly < 0: true_anomaly = (2.0 * np.pi) - abs(true_anomaly)
 
             actual_distance = cls.radius(true_anomaly=true_anomaly, eccentricity=eccentricity)
-            azimutal_angle = cls.true_anomaly_to_azimuth(true_anomaly=true_anomaly,
+            azimuthal_angle = cls.true_anomaly_to_azimuth(true_anomaly=true_anomaly,
                                                          argument_of_periastron=argument_of_periastron)
 
-            if azimutal_angle < 0: azimutal_angle = (2.0 * np.pi) - abs(azimutal_angle)
+            if azimuthal_angle < 0: azimuthal_angle = (2.0 * np.pi) - abs(azimuthal_angle)
 
-            position.append([actual_distance, azimutal_angle, true_anomaly, phase])
+            position.append([actual_distance, azimuthal_angle, true_anomaly, phase])
 
             phase += photometric_phase_step
         return position

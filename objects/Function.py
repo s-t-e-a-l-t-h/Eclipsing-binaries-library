@@ -546,6 +546,23 @@ def chess_matrix(db_name, band):
         logg = np.array(list(zip(*mysql_cur.fetchall()))[0])
 
         for j, k in list(zip(range(len(g_arr) + 1, -1, -1), range(0, len(g_arr) + 2, 1))):
+            # j ide od zadu, teda sa dekrementuje, a pre kazdu hodnotu teploty, sa vyberu existujuce hodnoty
+            # gravitacneho zrychlenia v DB;
+            # matica ma stale rozmer g_arr (--->) x t_arr (^) a viem, ze je stale dopocitana ta vyssia
+            #                                             (|)
+            # hodnota pre gravitaciu a teda, ze 5ka npr bude vzdy a teda, ked zavolam logg[j], kde "j" je v dlzke
+            # g_arr, ktore ide od zadu, a ak zbehne try. priklad:
+            #       i: 29: j: k: 11
+            #       logg: [2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
+            # tak po zavolani logg[1] je mozne citat pole, zbehne try, a k = 11 tak sa 11 - 1 hodnota nastavi na 1
+            # a tato 11 - 1 logg = 4.5 hodnota prislucha
+            #
+            # ak ale 71 2 10 (i, j, k)
+            # a mame [ 4.5, 5.0], tak po zavolani 2 je problem, lebo sa neda citat pole a teda hodnota od zadu
+            # 10 - 1 musi byt nastaven na 0
+            # proste v skratke tie indexy (j, k) musia bezat voci sebe tak, aby toto fungovalo a je to sakra zavisle na
+            # tom, ze viem, ze tie horne gravitacne zrychlenia maju vzdy existovat, ak bysa daco pomenilo v modeloch,
+            # tak tento kod zdochne jak pes
             try:
                 # tu sa skusi zavolat hodnota z DB pola a ked tam je, tak potom tento try zbehne, ak nie,
                 # tak to raisne exception a po probleme.
@@ -559,7 +576,6 @@ def chess_matrix(db_name, band):
             except:
                 # toto zapise 0 do matice, cize tam hodnota v DB takejto kombinacie nie je
                 matrix[i + 1][k - 1] = 0
-
     # vonkajsia obruba matice su 9 a to znamena, ze je to mimo "hernej plochy"
     # tie 9-viatky su tu preto, aby som vedel overit pri hodnotach ako 0,0, ci 0,11 v matici, ci nei som mimo, a teda;
     # samozrejme sa mimo dostanem pomocou sachystickeho algoritmu pre hladanie napadnutych poli figurou, v tomto
@@ -638,3 +654,29 @@ def indices(lst, element):
         except ValueError:
             return result
         result.append(offset)
+
+
+def arbitrary_rotate(theta, omega=None, vector=None, degrees=False):
+    # omega - lubovolny vektor okolo ktoreho sa ma rotovat
+    # theta - uhol o kolko rotovat
+    # vector - vector ktory sa bude rotovat okolo omega
+
+    omega = np.array(omega) / np.linalg.norm(np.array(omega))
+    if degrees:
+        theta = np.radians(theta)
+
+    matrix = np.arange(9, dtype=np.float).reshape((3, 3))
+
+    matrix[0][0] = (np.cos(theta)) + (omega[0] ** 2 * (1. - np.cos(theta)))
+    matrix[0][1] = (omega[0] * omega[1] * (1. - np.cos(theta))) - (omega[2] * np.sin(theta))
+    matrix[0][2] = (omega[1] * np.sin(theta)) + (omega[0] * omega[2] * (1. - np.cos(theta)))
+
+    matrix[1][0] = (omega[2] * np.sin(theta)) + (omega[0] * omega[1] * (1. - np.cos(theta)))
+    matrix[1][1] = (np.cos(theta)) + (omega[1] ** 2 * (1. - np.cos(theta)))
+    matrix[1][2] = (- omega[0] * np.sin(theta)) + (omega[1] * omega[2] * (1. - np.cos(theta)))
+
+    matrix[2][0] = (- omega[1] * np.sin(theta)) + (omega[0] * omega[2] * (1. - np.cos(theta)))
+    matrix[2][1] = (omega[0] * np.sin(theta)) + (omega[1] * omega[2] * (1. - np.cos(theta)))
+    matrix[2][2] = (np.cos(theta)) + (omega[2] ** 2 * (1. - np.cos(theta)))
+
+    return np.dot(matrix, vector)

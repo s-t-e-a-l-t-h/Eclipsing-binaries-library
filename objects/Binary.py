@@ -204,16 +204,13 @@ class Binary:
             secondary=None,
             orbit=None,
             system=None,  # eb/te
-            planete="roche",  # roche/sphere
+            planet="roche",  # roche/sphere
             verbose=False):
 
         self.verbose = verbose
         self.exception = []
 
-        if self.verbose:
-            print(Fn.color_string("info", "Info: ") + "Binary initialisation star.")
-
-        self.planete = planete  # zadefinovane zatial len preto, aby pycharm nepapuloval
+        self.planet = planet  # zadefinovane zatial len preto, aby pycharm nepapuloval
         self.primary = primary
         self.secondary = secondary
         self.system = system
@@ -224,218 +221,426 @@ class Binary:
         self.binary_morph = None
         self.relative_semimajor_axis = None
 
-        try:
-            # testing required input parameters
-            # variables = vars(primary).keys()
-            variables = ["mass", "potential", "albedo", "synchronicity_parameter", "effective_temperature",
-                         "gravity_darkening", "metallicity"]
-            for var in variables:
-                if primary.__dict__[var] is None or secondary.__dict__[var] is None:
+        # nemam cas sa hrat s tym, co z toho pasuje aj pre planetu a co pre hviezdu a ifovat to tam;
+        # co sa tyka rychlosti programovania, je momentalne (13.02.2017) jednoduchsie nareplikovat cast kodu
+        # pre exoplanety a spravit to cez podmienky eb/te
+        if self.system == "eb":
+            if self.verbose:
+                print(Fn.color_string("info", "Info: ") + "Binary initialisation star.")
+            try:
+                if not type(primary).__name__ == "Star" or not type(secondary).__name__ == "Star":
+                    if self.verbose:
+                        print(Fn.color_string(color="error",
+                                              string="InitError, TypeError: ") + "In class: Binary, function: __init__(), "
+                                                                                 "line: " + str(
+                            Fn.lineno()) + ". Variable `primary` or `secondary` is an invalid type.")
+                    self.exception.append(
+                        "In class: Binary, function: __init__(), line: " + str(
+                            Fn.lineno()) + ". `primary` or `secondary` "
+                                           "is an invalid type.")
+                    self.init = False
+                    raise Exception()
+
+                # testing required input parameters
+                # variables = vars(primary).keys()
+                variables = ["mass", "potential", "albedo", "synchronicity_parameter", "effective_temperature",
+                             "gravity_darkening", "metallicity"]
+                for var in variables:
+                    if primary.__dict__[var] is None or secondary.__dict__[var] is None:
+                        if self.verbose:
+                            print(Fn.color_string(color="error",
+                                                  string="InitError: ") + "In class: Binary, function: __init__(), line: " + str(
+                                Fn.lineno()) + ". Variable `" + str(var) + "` is required.")
+                        self.exception.append(
+                            "In class: Binary, function: __init__(), line: " + str(Fn.lineno()) + ". Variable `" + str(
+                                var) + "` is required.")
+
+                        self.init = False
+                        raise Exception()
+
+                self.mass_ratio = secondary.mass / primary.mass
+                self.invert_mass_ratio = 1.0 / self.mass_ratio
+
+                if orbit is not None:
+                    self.orbit = orbit
+                else:
                     if self.verbose:
                         print(Fn.color_string(color="error",
                                               string="InitError: ") + "In class: Binary, function: __init__(), line: " + str(
-                            Fn.lineno()) + ". Variable `" + str(var) + "` is required.")
-                    self.exception.append(
-                        "In class: Binary, function: __init__(), line: " + str(Fn.lineno()) + ". Variable `" + str(
-                            var) + "` is required.")
-
-                    self.init = False
-                    raise Exception()
-
-            self.mass_ratio = secondary.mass / primary.mass
-            self.invert_mass_ratio = 1.0 / self.mass_ratio
-
-            if orbit is not None:
-                self.orbit = orbit
-            else:
-                if self.verbose:
-                    print(Fn.color_string(color="error",
-                                          string="InitError: ") + "In class: Binary, function: __init__(), line: " + str(
+                            Fn.lineno()) + ". Missing orbit class on initialisation.")
+                    self.exception.append("InitError: In class: Binary, function: __init__(), line: " + str(
                         Fn.lineno()) + ". Missing orbit class on initialisation.")
-                self.exception.append("InitError: In class: Binary, function: __init__(), line: " + str(
-                    Fn.lineno()) + ". Missing orbit class on initialisation.")
-                self.init = False
-                raise Exception()
-
-            # v kazdom pripade sa nastavi kriticky potencial (ked hviezdy vyplnaju svoj Rocheho lalok)
-            # vo vseobecnosti by tieto hodnoty mali byt totozne pri synchronnej orbite
-            self.primary.critical_potential = self.critical_potential(t_object="primary",
-                                                                      actual_distance=orbit.get_periastron_distance())
-            self.secondary.critical_potential = self.critical_potential(t_object="secondary",
-                                                                        actual_distance=orbit.get_periastron_distance())
-
-            # osetrit asynchronne orbity
-
-            # filling factor and critical potential
-            # ak sa jedna o viazanu rotaciu F1 = F2 = 1.0
-            if self.primary.synchronicity_parameter == 1.0 and self.secondary.synchronicity_parameter == 1.0 \
-                    and orbit.get_eccentricity() == 0.0:
-
-                if self.verbose:
-                    print(Fn.color_string(color="info", string="Info: ") + "Synchronous rotation")
-
-                # ceil = 100000.0
-                self.primary.lagrangian_points = self.get_lagrangian_points(actual_distance=1.0,
-                                                                            synchronicity_parameter=self.primary.synchronicity_parameter,
-                                                                            t_object="primary")
-                # toto nastavenie sekundarnych lagrangeovych bodov je tu len pre uplnost, aby tam neostala hodnota None
-                self.secondary.lagrangian_points = self.primary.lagrangian_points
-
-                # self.secondary.lagrangian_points = self.get_lagrangian_points(actual_distance = 1.0,
-                # synchronicity_parameter = self.secondary.synchronicity_parameter, t_object = "secondary")
-
-
-                argsi, argsii = (1.0, self.primary.lagrangian_points[1], 0., np.pi / 2.), ()
-                # podla pomeru hmotnosti sa za L2 berie ten, ktory je za lahsou zlozkou, cize ak q <= 1, tak sa berie
-                # lagrangian_points[2] a inak sa berie lagrangian_points[0]
-                if 1 >= self.mass_ratio > 0:
-                    argsii = (1.0, self.primary.lagrangian_points[2], 0., np.pi / 2.)
-                elif self.mass_ratio > 1:
-                    argsii = (1.0, abs(self.primary.lagrangian_points[0]), np.pi, np.pi / 2.)
-
-                potential_inner = abs(self.potential_value(*argsi))
-                potential_outer = abs(self.potential_value(*argsii))
-
-                # povodne tam boli zaokruhlene hodnoty a mari sa mi, ze na to bol dovod, ked na neho pridem, tak toto
-                # treba odkomentovat a napisat sem ten dovod potential_inner = math.ceil(abs(self.potential_value(*argsi)) * ceil) / ceil
-                # potential_outer	= math.ceil(abs(self.potential_value(*argsii)) * ceil) / ceil
-
-                df_potential = potential_inner - potential_outer
-
-                # premenna nastavena len pre self testing, nema realne vyuzitie ako self.
-                self.potential_inner = potential_inner
-                self.potential_outer = potential_outer
-                self.df_potential = df_potential
-
-                # nastavenie premennych pre filling faktory primarnej a sekundarnej zlozky
-                self.primary.filling_factor, self.secondary.filling_factor = (
-                                                                                 potential_inner - self.primary.potential) / (
-                                                                                 df_potential), (
-                                                                                 potential_inner - self.secondary.potential) / (
-                                                                                 df_potential)
-
-
-                # otestovanie over-contact systemu, ci je nastaveny spravny potencial, to znamena, ci su oba potencialy
-                # pri tomto systeme totozne ak nie su, tak sa init nastavi na False
-                # !!! TOTO BUDE MOZNO TREBA ZMENIT TAK, ZE AK SA DETEKUJE OVER-CONTACT, TAK AUTOMATICKY NASTAVIT
-                # HODNOTY POTENCIALU NA HODNOTU PRIMARNEJ ZLOZKY [xx.08.2016]
-                # !!! TO JE LEN DETAIL, UVIDI SA AKO SA TO BUDE SPRAVAT A CO EJ VYHODNEJSIE S ODSTUPOM CASU
-
-                # musi to byt zaukruhlovane, lebo sa stalo, ze jedna hviezda mala byt presne v laloku a samozrejme
-                # numerika je svian a filling_factor bol 1e-15, a toto sa tu vyhodnotilo jak spravne
-
-                if ((1 > round(self.secondary.filling_factor, 10) > 0) or (
-                                1 > round(self.primary.filling_factor, 10) > 0)) and (
-                            round(self.primary.filling_factor, 10) != round(self.secondary.filling_factor, 10)):
                     self.init = False
+                    raise Exception()
+
+                # v kazdom pripade sa nastavi kriticky potencial (ked hviezdy vyplnaju svoj Rocheho lalok)
+                # vo vseobecnosti by tieto hodnoty mali byt totozne pri synchronnej orbite
+                self.primary.critical_potential = self.critical_potential(t_object="primary",
+                                                                          actual_distance=orbit.get_periastron_distance())
+                self.secondary.critical_potential = self.critical_potential(t_object="secondary",
+                                                                            actual_distance=orbit.get_periastron_distance())
+
+                # osetrit asynchronne orbity
+
+                # filling factor and critical potential
+                # ak sa jedna o viazanu rotaciu F1 = F2 = 1.0
+                if self.primary.synchronicity_parameter == 1.0 and self.secondary.synchronicity_parameter == 1.0 \
+                        and orbit.get_eccentricity() == 0.0:
+
                     if self.verbose:
-                        print(Fn.color_string(color="error",
-                                              string="ValueError: ") + "In class: Binary, function: __init__(), line: " + str(
+                        print(Fn.color_string(color="info", string="Info: ") + "Synchronous rotation")
+
+                    # ceil = 100000.0
+                    self.primary.lagrangian_points = self.get_lagrangian_points(actual_distance=1.0,
+                                                                                synchronicity_parameter=self.primary.synchronicity_parameter,
+                                                                                t_object="primary")
+                    # toto nastavenie sekundarnych lagrangeovych bodov je tu len pre uplnost, aby tam neostala hodnota None
+                    self.secondary.lagrangian_points = self.primary.lagrangian_points
+
+                    # self.secondary.lagrangian_points = self.get_lagrangian_points(actual_distance = 1.0,
+                    # synchronicity_parameter = self.secondary.synchronicity_parameter, t_object = "secondary")
+
+
+                    argsi, argsii = (1.0, self.primary.lagrangian_points[1], 0., np.pi / 2.), ()
+                    # podla pomeru hmotnosti sa za L2 berie ten, ktory je za lahsou zlozkou, cize ak q <= 1, tak sa berie
+                    # lagrangian_points[2] a inak sa berie lagrangian_points[0]
+                    if 1 >= self.mass_ratio > 0:
+                        argsii = (1.0, self.primary.lagrangian_points[2], 0., np.pi / 2.)
+                    elif self.mass_ratio > 1:
+                        argsii = (1.0, abs(self.primary.lagrangian_points[0]), np.pi, np.pi / 2.)
+
+                    potential_inner = abs(self.potential_value(*argsi))
+                    potential_outer = abs(self.potential_value(*argsii))
+
+                    # povodne tam boli zaokruhlene hodnoty a mari sa mi, ze na to bol dovod, ked na neho pridem, tak toto
+                    # treba odkomentovat a napisat sem ten dovod potential_inner = math.ceil(abs(self.potential_value(*argsi)) * ceil) / ceil
+                    # potential_outer	= math.ceil(abs(self.potential_value(*argsii)) * ceil) / ceil
+
+                    df_potential = potential_inner - potential_outer
+
+                    # premenna nastavena len pre self testing, nema realne vyuzitie ako self.
+                    self.potential_inner = potential_inner
+                    self.potential_outer = potential_outer
+                    self.df_potential = df_potential
+
+                    # nastavenie premennych pre filling faktory primarnej a sekundarnej zlozky
+                    self.primary.filling_factor, self.secondary.filling_factor = (
+                                                                                     potential_inner - self.primary.potential) / (
+                                                                                     df_potential), (
+                                                                                     potential_inner - self.secondary.potential) / (
+                                                                                     df_potential)
+
+                    # otestovanie over-contact systemu, ci je nastaveny spravny potencial, to znamena, ci su oba potencialy
+                    # pri tomto systeme totozne ak nie su, tak sa init nastavi na False
+                    # !!! TOTO BUDE MOZNO TREBA ZMENIT TAK, ZE AK SA DETEKUJE OVER-CONTACT, TAK AUTOMATICKY NASTAVIT
+                    # HODNOTY POTENCIALU NA HODNOTU PRIMARNEJ ZLOZKY [xx.08.2016]
+                    # !!! TO JE LEN DETAIL, UVIDI SA AKO SA TO BUDE SPRAVAT A CO EJ VYHODNEJSIE S ODSTUPOM CASU
+
+                    # musi to byt zaukruhlovane, lebo sa stalo, ze jedna hviezda mala byt presne v laloku a samozrejme
+                    # numerika je svian a filling_factor bol 1e-15, a toto sa tu vyhodnotilo jak spravne
+
+                    if ((1 > round(self.secondary.filling_factor, 10) > 0) or (
+                                    1 > round(self.primary.filling_factor, 10) > 0)) and (
+                                round(self.primary.filling_factor, 10) != round(self.secondary.filling_factor, 10)):
+                        self.init = False
+                        if self.verbose:
+                            print(Fn.color_string(color="error",
+                                                  string="ValueError: ") + "In class: Binary, function: __init__(), line: " + str(
+                                Fn.lineno()) + ". Detected over-contact system, but potentials of components don't match.")
+                            # ak by som to chcel niekedy v buducnosti osetrovat, tak to treba spravit tak,
+                            # ze sa nastavi pre obe zlozky hodnota tej hviezdy, kde je potencial medzi 0 a 1;
+                            # v pripade, ze to je pri oboch, tak asi vybrat jednu, ale osobne teraz [03.11.2016] si myslim,
+                            # ze treba raisnut hodit exception a vyriesene napriek tomu, ze vyssie pisem, ze treba nastavit
+                            # na primarnu, ale to nemusi byt vzdy overcontact system
+                        self.exception.append("ValueError: In class: Binary, function: __init__(), line: " + str(
                             Fn.lineno()) + ". Detected over-contact system, but potentials of components don't match.")
-                        # ak by som to chcel niekedy v buducnosti osetrovat, tak to treba spravit tak,
-                        # ze sa nastavi pre obe zlozky hodnota tej hviezdy, kde je potencial medzi 0 a 1;
-                        # v pripade, ze to je pri oboch, tak asi vybrat jednu, ale osobne teraz [03.11.2016] si myslim,
-                        # ze treba raisnut hodit exception a vyriesene napriek tomu, ze vyssie pisem, ze treba nastavit
-                        # na primarnu, ale to nemusi byt vzdy overcontact system
-                    self.exception.append("ValueError: In class: Binary, function: __init__(), line: " + str(
-                        Fn.lineno()) + ". Detected over-contact system, but potentials of components don't match.")
+                        raise Exception()
+
+                    if self.primary.filling_factor > 1 or self.secondary.filling_factor > 1:
+                        # ak je filling factor pre jednu zo zloziek vacsi ako 1 tak je to nefyzikalny system;
+                        # [03.11.2016] - treba si overti teoriu, ale kedze tu mam tuto podmienku, tak som sa na to uz asi
+                        # pozeral v minulosti a tak to bolo, minimalne si pamatam, ze som to testoval v kode a empiria
+                        # ukazala, ze to tak je
+                        if self.verbose:
+                            print(Fn.color_string(color="error",
+                                                  string="ValueError: ") + "In class: Binary, function: __init__(), line: " + str(
+                                Fn.lineno()) + ". Non-Physical system.")
+                        self.exception.append("ValueError In class: Binary, function: __init__(), line: " + str(
+                            Fn.lineno()) + ". Non-Physical system: primary.filling_factor > 1 or secondary.filling_factor > 1")
+                        self.init = False
+                        raise Exception()
+
+                    if self.primary.filling_factor < 0 and self.secondary.filling_factor < 0:
+                        self.binary_morph = "detached"
+                        if self.verbose:
+                            print(Fn.color_string(color="info", string="Info: ") + "Detached binary system.")
+                    elif (round(self.primary.filling_factor, 10) == 0 and self.secondary.filling_factor < 0) or (
+                                    self.primary.filling_factor < 0 and round(self.secondary.filling_factor, 10) == 0):
+                        self.binary_morph = "semi-detached"
+                        if self.verbose:
+                            print(Fn.color_string(color="info", string="Info: ") + "Semi-detached binary system.")
+                    elif 1 > self.primary.filling_factor > 0:
+                        self.binary_morph = "over-contact"
+                        if self.verbose:
+                            print(Fn.color_string(color="info", string="Info: ") + "Over-contact binary system.")
+                    elif self.primary.filling_factor > 1 or self.secondary.filling_factor > 1:
+                        if self.verbose:
+                            print(Fn.color_string(color="info", string="Info: ") + "Open system.")
+
+                else:
+                    self.binary_morph = "WARNING, NOT CIRCULAR ORBIT, ELLIPTICAL IS NOT CURRENTLY SUPPORTED"
+
+                    if verbose:
+                        print(Fn.color_string(color="warning",
+                                              string="Warning: ") + "In class: Binary, function: __init__(), line: " + str(
+                            Fn.lineno()) + ". Asynchronous and/or not circular orbit currently not supported.")
+                        # /orbitalna trieda
+                    self.exception.append("Warning: In class: Binary, function: __init__(), line: " + str(
+                            Fn.lineno()) + ". Asynchronous and/or not circular orbit currently not supported.")
                     raise Exception()
 
-                if self.primary.filling_factor > 1 or self.secondary.filling_factor > 1:
-                    # ak je filling factor pre jednu zo zloziek vacsi ako 1 tak je to nefyzikalny system;
-                    # [03.11.2016] - treba si overti teoriu, ale kedze tu mam tuto podmienku, tak som sa na to uz asi
-                    # pozeral v minulosti a tak to bolo, minimalne si pamatam, ze som to testoval v kode a empiria
-                    # ukazala, ze to tak je
+                # /filling factor or critical potential
+
+                # ak nie je aspon jeden z polarnych polomerov hviezd spocitany, premenna init sa nastavi na False
+                # ak totiz nedoslo k ich zrataniu, pravdepodobne je to sposobene zlymi vstupnymi parametrami, su nefyzikalne
+                # preto nema zmysel dalej ratat, za prve preto, lebo sa polomer dalej pouziva, za druhe preto lebo sa nic
+                # dalej neporata so zlym systemom
+
+                self.periastron_distance = orbit.get_periastron_distance()
+                self.primary.polar_radius = self.get_polar_radius(t_object="primary",
+                                                                  actual_distance=self.periastron_distance)
+                self.secondary.polar_radius = self.get_polar_radius(t_object="secondary",
+                                                                    actual_distance=self.periastron_distance)
+
+                if not self.primary.polar_radius or not self.secondary.polar_radius: self.init = False
+
+                self.primary.backward_radius = self.get_backward_radius(t_object="primary",
+                                                                        actual_distance=self.periastron_distance)
+                self.secondary.backward_radius = self.get_backward_radius(t_object="secondary",
+                                                                          actual_distance=self.periastron_distance)
+
+                # orbitalna trieda
+                if not isinstance(self.orbit, Orb.Orbit):
+                    if verbose:
+                        print(Fn.color_string(color="warning",
+                                              string="Warning: ") + "In class: Binary, function: __init__(), line: " + str(
+                            Fn.lineno()) + ". Orbital class is missing.")
+                        # /orbitalna trieda
+                    self.exception.append("Warning: In class: Binary, function: __init__(), line: " + str(
+                        Fn.lineno()) + ". Orbital class is missing.")
+                    self.init = False
+                else:
+                    # relativna dlzka hlavnej polosi sa nastavi pre instanciu Binary aj pre instanciu Orbit
+                    self.relative_semimajor_axis = (((((self.orbit.orbital_period * 86400.0) ** 2) * (
+                        gv.G_CONSTANT * gv.SOLAR_MASS * (self.primary.mass + self.secondary.mass))) / (
+                                                         4.0 * np.pi ** 2)) ** (
+                                                        1.0 / 3.0)) / gv.SOLAR_RADIUS  # in gv.SOLAR_RADIUS unit
+                    self.orbit.relative_semimajor_axis = self.relative_semimajor_axis
+
+                    # nastavi sa polarne gravitacne zrychlenie pre primarnu a sekundarnu zlozku v periastre,
+                    # cize znova treba zabezpecit, aby pri excentrickej drahe bolo zachovane, ze v periastre d = 1
+                    self.primary.polar_gravity = self.compute_polar_gravity(actual_distance=self.periastron_distance,
+                                                                            angular_velocity=self.orbit.mean_angular_velocity,
+                                                                            t_object="primary")
+                    self.secondary.polar_gravity = self.compute_polar_gravity(actual_distance=self.periastron_distance,
+                                                                              angular_velocity=self.orbit.mean_angular_velocity,
+                                                                              t_object="secondary")
+
+                # nastavenie niektorych polarnych parametrov hviezd (pre periastrum)
+                self.primary.polar_gradient_norm = self.compute_polar_gradient_norm(
+                    actual_distance=self.periastron_distance,
+                    t_object="primary",
+                    verbose=self.verbose)
+                self.secondary.polar_gradient_norm = self.compute_polar_gradient_norm(
+                    actual_distance=self.periastron_distance,
+                    t_object="secondary",
+                    verbose=self.verbose)
+
+                self.primary.gravity_scalling_factor = self.compute_gravity_scalling_factor(t_object="primary")
+                self.secondary.gravity_scalling_factor = self.compute_gravity_scalling_factor(t_object="secondary")
+
+            except:
+                self.init = False
+        ########################################################################################################
+        ###################                    TU ZACIANJU PLANETY
+        ########################################################################################################
+        elif self.system == "te":
+            if self.verbose:
+                print(Fn.color_string("info", "Info: ") + "Binary initialisation planetary system.")
+            try:
+                if not type(primary).__name__ == "Star" and not type(secondary).__name__ == "Planete":
                     if self.verbose:
                         print(Fn.color_string(color="error",
-                                              string="ValueError: ") + "In class: Binary, function: __init__(), line: " + str(
-                            Fn.lineno()) + ". Non-Physical system.")
-                    self.exception.append("ValueError In class: Binary, function: __init__(), line: " + str(
-                        Fn.lineno()) + ". Non-Physical system: primary.filling_factor > 1 or secondary.filling_factor > 1")
+                                              string="InitError, TypeError: ") + "In class: Binary, function: __init__(), "
+                                                                                 "line: " + str(
+                            Fn.lineno()) + ". Variable `primary` or `secondary` is an invalid type.")
+                    self.exception.append(
+                        "In class: Binary, function: __init__(), line: " + str(
+                            Fn.lineno()) + ". `primary` or `secondary` "
+                                           "is an invalid type.")
                     self.init = False
                     raise Exception()
 
-                if self.primary.filling_factor < 0 and self.secondary.filling_factor < 0:
-                    self.binary_morph = "detached"
+                # testing required input parameters
+                variables = ["mass", "potential", "effective_temperature", "gravity_darkening", "metallicity",
+                             "synchronicity_parameter"] if self.planet == "roche" \
+                    else ["mass", "potential", "effective_temperature", "gravity_darkening", "metallicity",
+                          "angular_velocity"]
+
+                for var in variables:
+                    if not None != primary.__dict__[var]:
+                        if self.verbose:
+                            print(Fn.color_string(color="error",
+                                                  string="InitError: ") + "In class: Binary, function: __init__(), line: " + str(
+                                Fn.lineno()) + ". Variable `" + str(var) + "` is required.")
+                        self.exception.append(
+                            "In class: Binary, function: __init__(), line: " + str(
+                                Fn.lineno()) + ". Variable `" + str(
+                                var) + "` is required.")
+
+                        self.init = False
+                        raise Exception()
+
+                variables = ["mass", "potential", "albedo", "effective_temperature",
+                             "synchronicity_parameter"] if self.planet == "roche" else ["mass", "potential", "albedo",
+                                                                                        "effective_temperature"]
+                for var in variables:
+                    if not None != secondary.__dict__[var]:
+                        if self.verbose:
+                            print(Fn.color_string(color="error",
+                                                  string="InitError: ") + "In class: Binary, function: __init__(), line: " + str(
+                                Fn.lineno()) + ". Variable `" + str(var) + "` is required.")
+                        self.exception.append(
+                            "In class: Binary, function: __init__(), line: " + str(
+                                Fn.lineno()) + ". Variable `" + str(
+                                var) + "` is required.")
+
+                        self.init = False
+                        raise Exception()
+
+                if orbit is not None:
+                    self.orbit = orbit
+                else:
                     if self.verbose:
-                        print(Fn.color_string(color="info", string="Info: ") + "Detached binary system.")
-                elif (round(self.primary.filling_factor, 10) == 0 and self.secondary.filling_factor < 0) or (
-                                self.primary.filling_factor < 0 and round(self.secondary.filling_factor, 10) == 0):
-                    self.binary_morph = "semi-detached"
-                    if self.verbose:
-                        print(Fn.color_string(color="info", string="Info: ") + "Semi-detached binary system.")
-                elif 1 > self.primary.filling_factor > 0:
-                    self.binary_morph = "over-contact"
-                    if self.verbose:
-                        print(Fn.color_string(color="info", string="Info: ") + "Over-contact binary system.")
-                elif self.primary.filling_factor > 1 or self.secondary.filling_factor > 1:
-                    if self.verbose:
-                        print(Fn.color_string(color="info", string="Info: ") + "Open system.")
+                        print(Fn.color_string(color="error",
+                                              string="InitError: ") + "In class: Binary, function: __init__(), line: " + str(
+                            Fn.lineno()) + ". Missing orbit class on initialisation.")
+                    self.exception.append("InitError: In class: Binary, function: __init__(), line: " + str(
+                        Fn.lineno()) + ". Missing orbit class on initialisation.")
+                    self.init = False
+                    raise Exception()
 
-            else:
-                self.binary_morph = "WARNING, NOT CIRCULAR ORBIT"
-            # /filling factor or critical potential
+                # pre oba pripady (spehere aj roche), tak to budem davat sem
+                self.periastron_distance = orbit.get_periastron_distance()
 
-            # ak nie je aspon jeden z polarnych polomerov hviezd spocitany, premenna init sa nastavi na False
-            # ak totiz nedoslo k ich zrataniu, pravdepodobne je to sposobene zlymi vstupnymi parametrami, su nefyzikalne
-            # preto nema zmysel dalej ratat, za prve preto, lebo sa polomer dalej pouziva, za druhe preto lebo sa nic
-            # dalej neporata so zlym systemom
-
-            self.periastron_distance = orbit.get_periastron_distance()
-            self.primary.polar_radius = self.get_polar_radius(t_object="primary",
-                                                              actual_distance=self.periastron_distance)
-            self.secondary.polar_radius = self.get_polar_radius(t_object="secondary",
-                                                                actual_distance=self.periastron_distance)
-
-            if not self.primary.polar_radius or not self.secondary.polar_radius: self.init = False
-
-            self.primary.backward_radius = self.get_backward_radius(t_object="primary",
-                                                                    actual_distance=self.periastron_distance)
-            self.secondary.backward_radius = self.get_backward_radius(t_object="secondary",
-                                                                      actual_distance=self.periastron_distance)
-
-            # orbitalna trieda
-            if not isinstance(self.orbit, Orb.Orbit):
-                if verbose:
-                    print(Fn.color_string(color="warning",
-                                          string="Warning: ") + "In class: Binary, function: __init__(), line: " + str(
+                # orbitalna trieda
+                if not isinstance(self.orbit, Orb.Orbit):
+                    if verbose:
+                        print(Fn.color_string(color="warning",
+                                              string="Warning: ") + "In class: Binary, function: __init__(), line: " + str(
+                            Fn.lineno()) + ". Orbital class is missing.")
+                        # /orbitalna trieda
+                    self.exception.append("Warning: In class: Binary, function: __init__(), line: " + str(
                         Fn.lineno()) + ". Orbital class is missing.")
-                    # /orbitalna trieda
-                self.exception.append("Warning: In class: Binary, function: __init__(), line: " + str(
-                    Fn.lineno()) + ". Orbital class is missing.")
-                self.init = False
-            else:
+                    self.init = False
+                    raise Exception()
+
                 # relativna dlzka hlavnej polosi sa nastavi pre instanciu Binary aj pre instanciu Orbit
+                # spocita sa z tretieho Keplerovho zakona
                 self.relative_semimajor_axis = (((((self.orbit.orbital_period * 86400.0) ** 2) * (
                     gv.G_CONSTANT * gv.SOLAR_MASS * (self.primary.mass + self.secondary.mass))) / (
                                                      4.0 * np.pi ** 2)) ** (
                                                     1.0 / 3.0)) / gv.SOLAR_RADIUS  # in gv.SOLAR_RADIUS unit
                 self.orbit.relative_semimajor_axis = self.relative_semimajor_axis
 
-                # nastavi sa polarne gravitacne zrychlenie pre primarnu a sekundarnu zlozku v periastre,
-                # cize znova treba zabezpecit, aby pri excentrickej drahe bolo zachovane, ze v periastre d = 1
-                self.primary.polar_gravity = self.compute_polar_gravity(actual_distance=self.periastron_distance,
-                                                                        angular_velocity=self.orbit.mean_angular_velocity,
-                                                                        t_object="primary")
-                self.secondary.polar_gravity = self.compute_polar_gravity(actual_distance=self.periastron_distance,
-                                                                          angular_velocity=self.orbit.mean_angular_velocity,
-                                                                          t_object="secondary")
+                # rozdelit na dva pripady: co sa bude pouzivat sfereicke priblizenie alebo klasicke dvojhviezdne
+                if self.planet == "roche":
+                    self.mass_ratio = secondary.mass / primary.mass
+                    self.invert_mass_ratio = 1.0 / self.mass_ratio
 
-            # nastavenie niektorych polarnych parametrov hviezd (pre periastrum)
-            self.primary.polar_gradient_norm = self.compute_polar_gradient_norm(
-                actual_distance=self.periastron_distance,
-                t_object="primary",
-                verbose=self.verbose)
-            self.secondary.polar_gradient_norm = self.compute_polar_gradient_norm(
-                actual_distance=self.periastron_distance,
-                t_object="secondary",
-                verbose=self.verbose)
+                    self.primary.critical_potential = self.critical_potential(t_object="primary",
+                                                                              actual_distance=orbit.get_periastron_distance())
+                    self.secondary.critical_potential = self.critical_potential(t_object="secondary",
+                                                                                actual_distance=orbit.get_periastron_distance())
 
-            self.primary.gravity_scalling_factor = self.compute_gravity_scalling_factor(t_object="primary")
-            self.secondary.gravity_scalling_factor = self.compute_gravity_scalling_factor(t_object="secondary")
+                    # ak je mensia hodnota potencialu ako je kriticka, tak je to pre exoplanety sprostost, nemoze byt
+                    # wuma system
+                    if self.primary.potential <= self.primary.critical_potential or \
+                                    self.secondary.potential <= self.secondary.critical_potential:
+                        if self.verbose:
+                            print(Fn.color_string(color="error",
+                                                  string="InitError: ") + "In class: Binary, function: __init__(), line: " + str(
+                                Fn.lineno()) + ". Invalid potential value.")
+                        self.exception.append("InitError: In class: Binary, function: __init__(), line: " + str(
+                            Fn.lineno()) + ". Invalid potential value.")
 
-        except:
-            self.init = False
+                        self.init = False
+                        raise Exception()
+
+                    self.primary.polar_radius = self.get_polar_radius(t_object="primary",
+                                                                      actual_distance=self.periastron_distance)
+                    self.secondary.polar_radius = self.get_polar_radius(t_object="secondary",
+                                                                        actual_distance=self.periastron_distance)
+
+                    if not self.primary.polar_radius or not self.secondary.polar_radius:
+                        self.init = False
+
+                    self.primary.backward_radius = self.get_backward_radius(t_object="primary",
+                                                                            actual_distance=self.periastron_distance)
+                    self.secondary.backward_radius = self.get_backward_radius(t_object="secondary",
+                                                                              actual_distance=self.periastron_distance)
+
+                    # nastavi sa polarne gravitacne zrychlenie pre primarnu zlozku v periastre,
+                    # periastralna vzialenost v jednotkach dlzky hlavnej poloosi a je v orbit.periastron_distance
+                    self.primary.polar_gravity = self.compute_polar_gravity(
+                        actual_distance=self.periastron_distance,
+                        angular_velocity=self.orbit.mean_angular_velocity,
+                        t_object="primary")
+
+                    # nastavenie niektorych polarnych parametrov hviezd (pre periastrum)
+                    self.primary.polar_gradient_norm = self.compute_polar_gradient_norm(
+                        actual_distance=self.periastron_distance,
+                        t_object="primary",
+                        verbose=self.verbose)
+
+                    self.primary.gravity_scalling_factor = self.compute_gravity_scalling_factor(t_object="primary")
+
+
+                elif self.planet == "sphere":
+                    self.primary.polar_radius = 1.0 / self.primary.potential
+                    self.primary.backward_radius = self.primary.single_start_backward_radius()
+
+                    self.secondary.polar_radius = 1.0 / self.secondary.potential
+                    self.secondary.backward_radius = self.secondary.polar_radius
+
+                    if not self.primary.polar_radius or not self.secondary.polar_radius or \
+                            not self.primary.backward_radius or not self.secondary.backward_radius or \
+                                    round(self.primary.backward_radius - self.primary.polar_radius, 10) < 0:
+
+                        self.init = False
+
+                        if self.verbose:
+                            print(Fn.color_string(color="error",
+                                                  string="InitError: ") + "In class: Binary, function: __init__(), line: " + str(
+                                Fn.lineno()) + ". Invalid radius value.")
+                        self.exception.append("InitError: In class: Binary, function: __init__(), line: " + str(
+                            Fn.lineno()) + ". Invalid radius value.")
+                        raise Exception()
+
+                    primary.polar_gravity = \
+                        self.primary.single_star_polar_gravity(
+                            polar_radius=self.primary.polar_radius * self.orbit.relative_semimajor_axis * gv.SOLAR_RADIUS)
+
+                    # nastavenie niektorych polarnych parametrov hviezd (pre periastrum)
+                    self.primary.polar_gradient_norm = self.primary.single_star_polar_gradient_norm()
+
+                    # tu mozno pouzit aj funkciu z tejto triedy (Binary), pretoze je to len delenie dvoch polarnych
+                    # hodnot
+                    self.primary.gravity_scalling_factor = self.compute_gravity_scalling_factor(t_object="primary")
+
+
+            except ValueError:
+                self.init = False
 
         if self.init and self.verbose:
             print(Fn.color_string(color="info", string="Info: ") + "Binary initialisation success.")
@@ -446,6 +651,8 @@ class Binary:
                 Fn.lineno()) + ". Error has been occurred during initialisation.")
             self.exception.append("InitError: In class: Binary, function: __init__(), line: " + str(
                 Fn.lineno()) + ". Error has been occurred during initialisation.")
+
+            print(self.get_exception())
 
     def get_info(self):
         print('\n' + str(self.__class__.__name__) + ' -------------------------------------------------')
@@ -633,7 +840,8 @@ class Binary:
                 print(Fn.color_string(color="error",
                                       string="ValueError: ") + "In class: Binary, function: get_backward_radius(), line: " + str(
                     Fn.lineno()) + ", star object: " + gv.COLOR_BLUE + str(
-                    t_object) + gv.COLOR_END + ". Error has been occurred while backward radius counting, primary mass (" + self.primary.mass + ") secondary mass (" + self.secondary.mass + ").")
+                    t_object) + gv.COLOR_END + ". Error has been occurred while backward radius counting, primary mass (" + str(
+                    self.primary.mass) + ") secondary mass (" + str(self.secondary.mass) + ").")
             return False
 
     def get_lagrangian_points(
@@ -1002,9 +1210,6 @@ class Binary:
         secondary_phi_steps, secondary_theta_steps = None, None
         use = False
         z_point, rotation_angle, transform = None, None, None
-        
-        # first adaptive angle (pre vypocet separacnej hranice)
-        fat = {"primary": None, "secondary": None}
 
         # phi_steps, pocet azimutalnych krokov, jedna sa o mierne zavadzajuce pomenovanie, pretoze sa jedna o pocet krokov
         # o kolko sa bude rotovat po kruznici okolo x-ovej osi
@@ -1511,7 +1716,7 @@ class Binary:
 
             del (primary, secondary, p, s, o, v, total)
             return model
-            
+
         if total:
             model["separation"] = None
             model['system'] = np.array(total)
@@ -1564,3 +1769,222 @@ class Binary:
         # plt.show()
 
         return x_min, p(x_min)
+
+    def create_spots(self, meta=None):
+
+        def set_false(x):
+            for t in x:
+                t.append(False)
+
+        spots, sizes, centers, alt_centers, boundaries = [], [], [], [], []
+        spots_meta = meta
+        x_separation = None
+
+        # if wuma system, get separation and make additional test to location of each point (if primary
+        # spot doesn't intersect with secondary, if does, then such spot will be skiped completly)
+        if self.binary_morph == "over-contact":
+            x_separation = self.get_separation(actual_distance=self.orbit.get_periastron_distance())[0]
+
+        for meta in spots_meta:
+            lon, lat, diameter = meta["lon"], meta["lat"], meta["diameter"]  # lon -> phi, lat -> theta
+            stps_azimuthal, stps_radial = meta["steps_azimuthal"], meta["steps_radial"]
+
+            # angle to move in radius of spot
+            mov_angle = float(diameter * 0.5) / float(stps_radial)
+
+            # radial vector (for spot point computation)
+            # radial_v = Fn.spheric_to_cartesian(vector=np.array([1.0, lon, lat]))
+            radial_v = np.array([1.0, lon, lat])  # unit radial vector to center of current spot
+
+            boundary, spot, solution = [], [], False
+            args, use = (self.orbit.get_periastron_distance(), radial_v[1], radial_v[2]), False
+
+            solution, use = self.solve(args, meta["t_object"], x_separation=x_separation)
+            # radial distance to the center of current spot from begining of coordinate system
+            spot_center_r = solution
+
+            # # for False testing
+            # if meta["diameter"] == 0.2:
+            #     use = False
+
+            if not use:
+                # in case of spots, every point should be usefull, otherwise skip current spot computation
+                set_false(x=[alt_centers, boundaries, spots, centers, sizes])
+                continue
+
+            center = Fn.spheric_to_cartesian(vector=np.array([solution, radial_v[1], radial_v[2]])).tolist()
+            spot.append(center)
+
+            # adaptive azimuthal steps in plane of spot
+            n0 = int(stps_azimuthal)
+
+            # we have to obtain distance between center and firts point in first circle of spot
+            args, use = (self.orbit.get_periastron_distance(), lon, lat + mov_angle), False
+            solution, use = self.solve(args, meta["t_object"], x_separation=x_separation)
+
+            # # for False testing
+            # if meta["diameter"] == 0.2:
+            #     use = False
+            if not use:
+                # in case of spots, every point should be usefull, otherwise skip current spot computation
+                set_false(x=[alt_centers, boundaries, spots, centers, sizes])
+                continue
+
+            x0 = np.sqrt(spot_center_r ** 2 + solution ** 2 - (2.0 * spot_center_r * solution * np.cos(mov_angle)))
+
+            # if problem will occured in while loop down bellow, we have to break current spot computation
+            # while will break and next_step will set to False
+            next_step = True
+
+            for i in range(0, stps_radial):
+                spheric_v = np.array([1.0, lon, lat + (mov_angle * (float(i) + 1.0))])
+
+                if spheric_v[1] < 0:
+                    spheric_v[1] += 2.0 * np.pi
+
+                # adaptive steps in plane of spot
+                ni = n0 * (float(i) + 1.0)
+                # ni = n0 * ((float(i) + 1.0) * x0) / x0
+
+                rot_angle, phi = 2.0 * np.pi / ni, 0.0
+
+                while phi < (2.0 * np.pi - (rot_angle * 0.5)):
+                    args, use = (self.orbit.get_periastron_distance(), spheric_v[1], spheric_v[2]), False
+                    solution, use = self.solve(args, meta["t_object"], x_separation=x_separation)
+
+                    # # for False testing
+                    # if meta["diameter"] == 0.2:
+                    #     use = False
+
+                    if not use:
+                        # in case of spots, every point should be usefull, otherwise skip current spot computation
+                        set_false(x=[alt_centers, boundaries, spots, centers, sizes])
+                        next_step = False
+                        break
+
+                    current_point = np.array([solution, spheric_v[1], spheric_v[2]])
+                    xyz = Fn.spheric_to_cartesian(vector=current_point)
+
+                    # spot.append([self.x_flip(t_object=meta["t_object"], x=xyz[0],
+                    #             star_separation=self.binary.periastron_distance), xyz[1], xyz[2]])
+
+                    spot.append(xyz.tolist())
+
+                    cartesian_v = Fn.spheric_to_cartesian(vector=spheric_v)
+                    # vector radial_v is normalized in fucntion arbitrary_rotation
+                    rot_v = Fn.arbitrary_rotate(theta=rot_angle, vector=cartesian_v,
+                                                omega=Fn.spheric_to_cartesian(radial_v))
+                    spheric_v = Fn.cartesian_to_spheric(vector=rot_v, degrees=False)
+
+                    if spheric_v[1] < 0:
+                        spheric_v[1] += 2.0 * np.pi
+                    phi += rot_angle
+
+                    if i == int(stps_radial) - 1:
+                        boundary.append(xyz.tolist())
+
+            if not next_step:
+                continue
+
+            # alternative center of spot (obtained from spot boundary)
+            # boundary center of mass
+            # return np.array([(tri[0] + tri[1] + tri[2]) / 3.0 for tri in faces])
+
+            b_com = sum(np.array(boundary)) / len(boundary)
+            spheric_v = Fn.cartesian_to_spheric(vector=b_com, degrees=False)
+
+            # i am not testing use, beacuse if points of entire spot exist, then this center point also has to
+            args, use, solution = (self.orbit.get_periastron_distance(), spheric_v[1], spheric_v[2]), False, False
+            solution, use = self.solve(args, meta["t_object"], x_separation=x_separation)
+            current_point = np.array([solution, spheric_v[1], spheric_v[2]])
+            alt_center = Fn.spheric_to_cartesian(vector=current_point).tolist()
+
+            spot.insert(0, alt_center)
+            # ----------------------------
+
+            sizes.append(max([np.linalg.norm(np.array(alt_center) - np.array(b)) for b in boundary]))
+            if meta["t_object"] == "primary":
+                alt_centers.append(alt_center)
+                boundaries.append(boundary)
+                spots.append(spot)
+                centers.append(center)
+            elif meta["t_object"] == "secondary":
+                alt_centers.append([self.x_flip(t_object="secondary", x=alt_center[0],
+                                                star_separation=self.orbit.get_periastron_distance()),
+                                    -alt_center[1], alt_center[2]])
+
+                centers.append([self.x_flip(t_object="secondary", x=center[0],
+                                            star_separation=self.orbit.get_periastron_distance()),
+                                -center[1], center[2]])
+
+                b = [[self.x_flip(t_object="secondary", x=x[0],
+                                  star_separation=self.orbit.get_periastron_distance()),
+                      -x[1], x[2]] for x in boundary]
+                boundaries.append(b)
+
+                s = [[self.x_flip(t_object="secondary", x=x[0],
+                                  star_separation=self.orbit.get_periastron_distance()),
+                      -x[1], x[2]] for x in spot]
+                spots.append(s)
+
+            else:
+                return False
+
+        spots_d = {"primary": [], "secondary": []}
+        for meta, i in list(zip(spots_meta, range(0, len(spots_meta)))):
+            if not Fn.empty(spots[i]):
+                norms = Geo.normal_estimation(binary_object=self,
+                                                   actual_distance=self.orbit.get_periastron_distance(),
+                                                   vertices=np.array(spots[i]), t_object=meta["t_object"])
+
+                spots_d[meta["t_object"]].append(
+                    {"vertices": spots[i], "center": centers[i], "alt_center": alt_centers[i],
+                     "size": sizes[i], "boundary": boundaries[i], "norms": norms, "meta": meta})
+
+        if not Fn.empty(spots_d["primary"]):
+            self.primary.spots = spots_d["primary"]
+        if not Fn.empty(spots_d["secondary"]):
+            self.secondary.spots = spots_d["secondary"]
+
+        return spots_d
+
+
+    def solve(self, args, t_object=None, x_separation=None):
+        # args = actual_distance, phi, theta
+        args, use, solution = args, False, False
+        try:
+            scipy_solve_point = self.primary.polar_radius / 10.0 if t_object == "primary" else self.secondary.polar_radius / 10.0
+            potential_fn = self.primary_potential_fn if t_object == "primary" else self.secondary_potential_fn
+            solution, _, ier, _ = scipy.optimize.fsolve(potential_fn, scipy_solve_point, full_output=True, args=args)
+
+            if ier == 1 and not np.isnan(solution[0]):
+                solution = solution[0]
+                if 1 > solution > 0:
+                    use = True
+        except:
+            use = False
+
+        # test if point is not "behind" separation in case of wuma (if not wuma, then x_separation is set to None, and
+        # condition is skipped)
+        if x_separation is not None and use == True:
+            # x value
+            x = Fn.spheric_to_cartesian([solution, args[1], args[2]])[0]
+            x = x if t_object == "primary" else self.x_flip(t_object="secondary", x=x,
+                                                            star_separation=args[0])
+
+            # also equal, i dont care abot bullshit spots
+            if (t_object == "primary" and x >= x_separation) or (t_object == "secondary" and x <= x_separation):
+                use = False
+
+        return solution, use
+
+    @classmethod
+    def x_flip(cls, t_object=None, x=None, star_separation=None):
+        if t_object == "primary":
+            return x
+        if t_object == "secondary":
+            return - (x - star_separation)
+
+
+    def get_binary_morphology(self):
+        return self.binary_morph

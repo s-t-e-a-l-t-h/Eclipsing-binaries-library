@@ -526,8 +526,25 @@ def face_orientation_beta(
 
     # vypocet porovnavacich normalovych vektorov
     # premenne t_object, binary_object, actual_distence prichadzaju ako externe argumenty z tejto funkcie
-    fn_normals = normal_estimation(binary_object=binary_object, actual_distance=actual_distance, vertices=com,
-                                   t_object=t_object, mode="in_point", verbose=verbose)
+    if binary_object.system == "eb" or (binary_object.system == "te" and binary_object.planet == "roche"):
+        fn_normals = normal_estimation(binary_object=binary_object, actual_distance=actual_distance, vertices=com,
+                                       t_object=t_object, mode="in_point", verbose=verbose)
+    else:
+        # ak sa riesi planetarny sytem a jedna sa o sfericke priblizenie, tak treba rozdelit vypocet normal;
+        # pre primarnu zlozku (hviezdu) z potencialu a pre sekundarnu (planetu) je to rovne com, lebo je to sfera,
+        # tak normalovy vektor je rovny smerovemu a je to rovno aj orientacia (face_orientation)
+        if t_object == "primary":
+            fn_normals = binary_object.primary.single_star_normal_estimation(vertices=com, verbose=verbose)
+
+        elif t_object == "secondary":
+            # # <kontrolne plotovanie>
+            # import objects.Plot as Plt
+            # Plt.plot_3d(faces=None, face_color="w", vertices=[com],
+            #             normals_view=False, points_view=True, faces_view=False, verbose=True,
+            #             face_alpha=1.0, azim=30, elev=30, save=False,
+            #             x_range = [0.5, 1.5], y_range = [-0.5, 0.5], z_range = [-0.5, 0.5])
+            # # < /kontrolne plotovanie>
+            return np.array([[c[0] - actual_distance, c[1], c[2]] for c in com])
 
     # v tomto for cykle sa normalne spocitaju normaly pomocou vektoroveho sucinu
     # ich smerovanie (ci sa jedna o vonkajsiu alebo vnutornu normalu) sa zisti porovnanim
@@ -578,7 +595,7 @@ def vector_array_normalisation(
     if not Fn.is_numpy_array(arr=vector_arr):
         vector_arr = np.array(vector_arr)
     try:
-        normalisated = np.array([vector / (np.linalg.norm(x=vector) * multi) for vector in vector_arr])
+        normalisated = np.array([np.array(vector) / (np.linalg.norm(x=vector) * multi) for vector in vector_arr])
     except:
         if verbose:
             print(Fn.color_string(color="error",
@@ -776,6 +793,33 @@ def eclipse_filter(
         behind["vertices2d"] = [[f[1], f[2]]
                                 for f in np.array(behind["vertices"])[np.unique(behind["simplices"])]]
 
+        # fig, ax = plt.subplots()
+        #
+        # patches = []
+        # for f in front["faces2d"]:
+        #     f = [[x[0], x[1]] for x in f]
+        #     polygon = Polygon(f, True, edgecolor="k")
+        #     patches.append(polygon)
+        #
+        # p = PatchCollection(patches, alpha=1.0, edgecolors="k")
+        # p.set_color("b")
+        # ax.add_collection(p)
+        #
+        # patches = []
+        # for f in behind["faces2d"]:
+        #     f = [[x[0], x[1]] for x in f]
+        #     polygon = Polygon(f, True, edgecolor="k")
+        #     patches.append(polygon)
+        #
+        # p = PatchCollection(patches, alpha=0.3, edgecolors="k")
+        # p.set_color("r")
+        # ax.add_collection(p)
+        #
+        # plt.gca().set_aspect('equal')
+        # ax.set_xlim([-.5, 1.5])
+        # ax.set_ylim([-.5, .5])
+        # plt.show()
+
         # boundary of front object
         bound = ConvexHull(front["vertices2d"])
         hull_points = Fn.array_mask(front["vertices2d"], bound.vertices)
@@ -802,17 +846,17 @@ def eclipse_filter(
 
             screen = np.zeros(shape=(resolution_y + 1, resolution_x + 1), dtype="float32")
             screen.fill(np.nan)
+            # screen_img = copy(screen)
 
             # naplnenie matice prednou zlozkou (tou z ktorej bude vidno vzdy vsetko co pride na vstup)
             for i in range(0, lf):
                 f = front["faces2d"][i]
                 x = fill_triangle(face=f, boundary=object_boundary, d=df)
-                # musi to byt takto osetrene, pretoze ak je tam nula, tak potom dojde delenie nulou,
-                # (nula tu bude v takom pripade, ak je male rozlisenie)
-                c = Fn.rand(0.2, 1.0, 1, time())[0]
+                # c = Fn.rand(0.2, 1.0, 1, time())[0]
                 for j in x:
                     try:
                         screen[j[0]][j[1]] = front["com_x"][i]
+                        # screen_img[j[0]][j[1]] = 0.5
                     except (IndexError, KeyError):
                         continue
 
@@ -831,6 +875,17 @@ def eclipse_filter(
                     return_array[1][b_idx].append(triangle_surface_area(triangle=[behind["faces"][i]],
                                                                         verbose=verbose)[0])
                     return_array[2][b_idx].append(behind["faces"][i])
+
+                    # x = fill_triangle(face=f, boundary=object_boundary, d=df)
+                    # x_shape_full = x.shape[0]
+                    # if x_shape_full > 0:
+                    #     try:
+                    #         for j in x:
+                    #             if np.isnan(screen[j[0]][j[1]]):
+                    #                 screen_img[j[0]][j[1]] = 0.75
+                    #     except (IndexError, KeyError):
+                    #         continue
+
                 elif len(outside) == 0:
                     continue
                 else:
@@ -841,15 +896,22 @@ def eclipse_filter(
                         try:
                             for j in x:
                                 x_shape_partial += 1 if np.isnan(screen[j[0]][j[1]]) else 0
+                                # if np.isnan(screen[j[0]][j[1]]):
+                                #     screen_img[j[0]][j[1]] = 1.0
                         except (IndexError, KeyError):
                             continue
 
                         surface = (x_shape_partial / x_shape_full) * triangle_surface_area(
                             triangle=[behind["faces"][i]], verbose=verbose)[0]
+
                         if surface > 0:
                             return_array[0][b_idx].append(idx)
                             return_array[1][b_idx].append(surface)
                             return_array[2][b_idx].append(behind["faces"][i])
+
+            # plt.axis("equal")
+            # plt.imshow(screen_img, cmap=plt.cm.gray_r, origin='upper', interpolation="nearest")
+            # plt.show()
 
         else:
             for f, i, idx in list(zip(behind["faces2d"], range(0, len(behind["faces2d"])), behind["indices"])):
@@ -1086,8 +1148,13 @@ def gradient_norm(
         return False
     try:
         vertices = faces.reshape(len(faces) * 3, 3)
-        gradient = normal_estimation(t_object=t_object, actual_distance=actual_distance, binary_object=binary_object,
-                                     verbose=verbose, vertices=vertices)
+        if binary_object.system == "eb":
+            gradient = normal_estimation(t_object=t_object, actual_distance=actual_distance, binary_object=binary_object,
+                                         verbose=verbose, vertices=vertices)
+        elif binary_object.system == "te" and binary_object.planet == "sphere":
+            gradient = binary_object.primary.single_star_normal_estimation(vertices=vertices, verbose=verbose)
+
+
         gradnorm = Fn.gradient_norm(gradient=gradient, verbose=verbose)
         return np.array([(gradnorm[idx * 3] + gradnorm[idx * 3 + 1] + gradnorm[idx * 3 + 2]) / 3.0 for idx in
                          range(int(len(gradnorm) / 3))])
@@ -1969,3 +2036,335 @@ def cgal_separation(cgal_simplex=None, x_separation=None):
 #     except:
 #         pass
 #     return return_array
+
+
+# noinspection PyTypeChecker
+def trispot(vertices=None, norms=None, spots=None, binary_morph=None, verbose=False, metadata=None):
+    from scipy.spatial import KDTree
+    from objects.Triangulation import Tri as Tri
+
+    simplices_map = {"primary": {}, "secondary": {}}
+    vertices_t, norms_t = copy(vertices), copy(norms)
+
+    # import objects.Plot as Plt
+    # Plt.plot_3d(vertices=[spots["primary"][0]["vertices"]], faces=None, normals_view=False, points_view=True,
+    #             faces_view=False, point_color="r", point_size=5.0, face_color="c", edge_color="k")
+    #
+    # Plt.plot_3d(vertices=[np.concatenate((spots["primary"][0]["vertices"], vertices["primary"]), 0)],
+    #             faces=None, normals_view=False, points_view=True,
+    #             faces_view=False, point_color=
+    #             [np.concatenate((["b"] * len(spots["primary"][0]["vertices"]), ["r"] * len(vertices["primary"])), 0)],
+    #             point_size=5.0, face_color="r", edge_color="k")
+    #
+    for t_object in ["primary", "secondary"]:
+        for i in range(0, len(vertices[t_object])):
+            simplices_map[t_object][i] = {"type": "t_object", "clearance": True, "enum": -1}
+
+    if "t_object" in locals():
+        del t_object
+
+    for t_object in ["primary", "secondary"]:
+        # average spacing of stars
+        avsp = average_spacing(data=vertices_t[t_object], neighbours=6)
+        for spot, spot_num in list(zip(spots[t_object], range(0, len(spots[t_object])))):
+            avsp_spot = average_spacing(data=spot["vertices"], neighbours=6)
+            simplices_test, vertices_test = [], []
+
+            try:
+                # find nerest points to spot alt center
+                tree = KDTree(vertices_t[t_object])
+                distance, ndx = tree.query(spot["alt_center"], k=len(vertices_t[t_object]))
+
+                for dist, i in list(zip(distance, ndx)):
+                    if dist > spot["size"] + (0.25 * avsp):
+                        # break, because distancies are ordered by size
+                        break
+
+                    # distance exeption for spots points
+                    if simplices_map[t_object][i]["type"] == "spot":
+                        if dist > spot["size"] + (0.05 * avsp_spot):
+                            continue
+
+                    # norms 0 belong to alt center
+                    if np.dot(spot["norms"][0], norms_t[t_object][i]) > 0:
+                        simplices_test.append(i)
+                # simplices of target object for testing whether point lying inside or not of spot boundary
+                simplices_test = list(set(simplices_test))
+
+                # test if index to remove from all current vertices belong to any spot
+                clearance_enum, spot_indices, star_indices = [], [], []
+                for st in simplices_test:
+                    if simplices_map[t_object][st]["type"] == "spot":
+                        clearance_enum.append(simplices_map[t_object][st]["enum"])
+                        spot_indices.append(st)
+                    else:
+                        star_indices.append(st)
+                clearance_enum = list(set(clearance_enum))
+
+                # vertices, norms and simplices_map update
+                if len(simplices_test) != 0:
+                    vertices_temp, norms_temp = [], []
+                    map_temp, j = {}, 0
+                    for i, vertex, norm in list(zip(range(0, len(vertices_t[t_object])), vertices_t[t_object],
+                                                    norms_t[t_object])):
+                        if i in simplices_test:
+                            continue
+                        vertices_temp.append(vertex)
+                        norms_temp.append(norm)
+
+                        map_temp[j] = {"type": simplices_map[t_object][i]["type"],
+                                       "clearance": simplices_map[t_object][i]["clearance"],
+                                       "enum": simplices_map[t_object][i]["enum"]}
+                        j += 1
+
+                    shift = len(vertices_temp)
+                    for i, vertex, norm in list(zip(range(shift, shift + len(spot["vertices"])), spot["vertices"],
+                                                    spot["norms"])):
+                        vertices_temp.append(vertex)
+                        norms_temp.append(norm)
+                        map_temp[i] = {"type": "spot", "clearance": True, "enum": spot_num}
+
+                    vertices_t[t_object] = copy(vertices_temp)
+                    simplices_map[t_object] = copy(map_temp)
+                    norms_t[t_object] = copy(norms_temp)
+
+                    del (vertices_temp, map_temp, norms_temp)
+
+            except IndexError:
+                print("IndexError")
+                continue
+    if "t_object" in locals():
+        del t_object
+
+    # # visualization
+    # v, s = [], []
+    # v = [x for x, i in list(zip(vertices_t["primary"], simplices_map["primary"])) if
+    #      simplices_map["primary"][i]["type"] == "t_object" and x[0] > 0.1]
+    # s = [x for x, i in list(zip(vertices_t["primary"], simplices_map["primary"])) if
+    #      simplices_map["primary"][i]["type"] == "spot"]
+    #
+    # import objects.Plot as Plt
+    # Plt.plot_3d(vertices=[v, s], faces=None, normals_view=False, points_view=True, faces_view=False,
+    #             point_color=[["r"] * len(v), ["b"] * len(s)], point_size=30.0, face_color=None, edge_color="k",
+    #             elev=45, azim=45, save=False)
+    #
+    # exit()
+
+    # triangulation process
+    if binary_morph == "detached" or binary_morph == "semi-contact":
+        tri = {"primary": convex_hull_triangulation(vertices=vertices_t["primary"], verbose=verbose),
+               "secondary": convex_hull_triangulation(vertices=vertices_t["secondary"], verbose=verbose)}
+
+    elif binary_morph == "over-contact":
+        tri_class = {"primary": Tri(vertices=vertices_t["primary"], norms=norms_t["primary"]),
+                     "secondary": Tri(vertices=vertices_t["secondary"], norms=norms_t["secondary"])}
+
+        tri_class["primary"].triangulate()
+        tri_class["secondary"].triangulate()
+
+        tri = {"primary": [tri_class["primary"].simplices(), tri_class["primary"].hull()],
+               "secondary": [tri_class["secondary"].simplices(), tri_class["secondary"].hull()]}
+
+        del (tri_class["primary"], tri_class["secondary"], tri_class)
+
+        face_orientation = {"primary": face_orientation_a(face=np.array(tri["primary"][1]), t_object="primary",
+                                                          actual_distance=0.0),
+                            "secondary": face_orientation_a(face=np.array(tri["secondary"][1]), t_object="secondary",
+                                                            actual_distance=1.0)}
+        rm_indices = {"primary": [], "secondary": []}
+
+        # odstranenie nespravne vytvorenych trojuholnikov na krku (och normaly zvieraju s [1, 0, 0] 0 stupnov)
+        for t_object in ["primary", "secondary"]:
+            for f, fo, ndx in list(zip(tri[t_object][1], face_orientation[t_object], range(0, len(tri[t_object][1])))):
+                # if x coo is more then center coo of primary star
+                if t_object == "primary" and (f[0][0] > 0.0 and f[1][0] > 0.0 and f[2][0] > 0.0):
+                    # we have to test face orientation, because should happpend, there is wrong face on neck (is inside
+                    # of neck, (create cover of it))
+                    if abs(angle(u=fo, v=np.array([1., 0., 0.]))) <= np.pi / 180.0:
+                        rm_indices[t_object].append(ndx)
+                elif t_object == "secondary" and (f[0][0] < 1.0 and f[1][0] < 1.0 and f[2][0] < 1.0):
+                    if abs(angle(u=fo, v=np.array([-1., 0., 0.]))) <= np.pi / 180.0:
+                        rm_indices[t_object].append(ndx)
+
+            s = [i[1] for i in enumerate(tri[t_object][0]) if i[0] not in rm_indices[t_object]]
+            t = [i[1] for i in enumerate(tri[t_object][1]) if i[0] not in rm_indices[t_object]]
+
+            tri[t_object][0], tri[t_object][1] = s, t
+
+    # separation spot and t_object
+    model = {"primary":
+                 {"t_object": [], "spots": {}},
+             "secondary":
+                 {"t_object": [], "spots": {}}}
+
+    # spots enumeration and structure preparation
+    # we need this tlanslator, because spot "enum" should be different to list index of this spot in variable
+    # "model", e.g. if entire spot lies inside of another, it is removed;
+    # model variable is based on existence of spots in simplices_map and if spot is removed, there is missing
+    # index in simplices_map, e.g. we have spots with enum (0, 1, 3) because 2 is for examle inside of 3 and
+    # then spots in model have anyway indices (0, 1, 2) so we have to translate 0 -> 0, 1 -> 1 and 2 -> 3 or
+    # in reverse way depends on current situation we handle with.
+    spots_indices_map = {"primary": list(set([simplices_map["primary"][i]["enum"] for i in simplices_map["primary"]
+                                              if simplices_map["primary"][i]["type"] == "spot"])),
+                         "secondary": list(
+                             set([simplices_map["secondary"][i]["enum"] for i in simplices_map["secondary"]
+                                  if simplices_map["secondary"][i]["type"] == "spot"]))}
+
+    rev_spots_indices_map = {"primary": None, "secondary": None}
+    simplex_map, meta = {"primary": {}, "secondary": {}}, {"primary": [], "secondary": []}
+    meta_indices = {"primary": [], "secondary": []}
+    spot_candidate = {"primary": {"vertices": {}, "com": {}, "3rd_enum": {}, "ref": {}},
+                      "secondary": {"vertices": {}, "com": {}, "3rd_enum": {}, "ref": {}}}
+
+    # i[0] - num, i[1] - spot enum
+    for t_object in ["primary", "secondary"]:
+        spots_indices_map[t_object] = {i[1]: i[0] for i in enumerate(spots_indices_map[t_object])}
+        rev_spots_indices_map[t_object] = {spots_indices_map[t_object][i]: i for i in spots_indices_map[t_object]}
+
+        if len(spots_indices_map[t_object]) != 0:
+            for i in range(len(spots_indices_map[t_object])):
+                model[t_object]["spots"][i] = []
+                spot_candidate[t_object]["vertices"][i] = []
+                spot_candidate[t_object]["com"][i] = []
+                spot_candidate[t_object]["3rd_enum"][i] = []
+                spot_candidate[t_object]["ref"][i] = []
+    if "t_object" in locals():
+        del t_object
+
+    # next will be t_o used as t_object for shorter notation, so if somewhere in comment is mentioned t_object as
+    # variable, I mean t_o variable
+    for t_o in ["primary", "secondary"]:
+        for s, t, idx in list(zip(tri[t_o][0], tri[t_o][1], range(0, len(tri[t_o][1])))):
+            # test if each point belongs to spot
+            if simplices_map[t_o][s[0]]["type"] == "spot" and \
+                            simplices_map[t_o][s[1]]["type"] == "spot" and \
+                            simplices_map[t_o][s[2]]["type"] == "spot":
+
+                # if each point belongs to one spot, then it is for sure face of that spot
+                if simplices_map[t_o][s[0]]["enum"] == \
+                        simplices_map[t_o][s[1]]["enum"] == \
+                        simplices_map[t_o][s[2]]["enum"]:
+                    model[t_o]["spots"][spots_indices_map[t_o][simplices_map[t_o][s[0]]["enum"]]].append(
+                        np.array(t).tolist())
+
+                    # vystupna mapa simplexu, teda na ktorom objekte, ma byt z ktorych bodov vytvoreny trojuholnik
+                    # a ktorej skvrne zo zoznamu existujucich patri (zo zoznamu existujucich znamena, ze poradie
+                    # je prisluchajuce skvrnam po generovani (teda ak bola nejaka skvrna vyhodena, pretoze sa nedal
+                    # zratat bod na nej, tak uz v tom zozname nieje) a nie metadatam pre skvrny)
+                    simplex_map[t_o][idx] = [s, spots_indices_map[t_o][simplices_map[t_o][s[0]]["enum"]]]
+
+                    # pre identifikaciu, ktore skvrny su platne, a aby sa teda vratili metadata len z
+                    # existujucich skvrn
+                    if not simplices_map[t_o][s[0]]["enum"] in meta_indices[t_o]:
+                        meta_indices[t_o].append(simplices_map[t_o][s[0]]["enum"])
+
+                else:
+                    # if at least one of points of face belongs to different spot, we have to test
+                    # which one of those spots current face belongs to
+                    reference = None
+
+                    # variable trd_enum is enum index of 3rd corner of face;
+
+                    if simplices_map[t_o][s[-1]]["enum"] == simplices_map[t_o][s[0]]["enum"]:
+                        reference = simplices_map[t_o][s[-1]]["enum"]
+                        trd_enum = simplices_map[t_o][s[1]]["enum"]
+                    elif simplices_map[t_o][s[0]]["enum"] == simplices_map[t_o][s[1]]["enum"]:
+                        reference = simplices_map[t_o][s[0]]["enum"]
+                        trd_enum = simplices_map[t_o][s[-1]]["enum"]
+                    elif simplices_map[t_o][s[1]]["enum"] == simplices_map[t_o][s[-1]]["enum"]:
+                        reference = simplices_map[t_o][s[1]]["enum"]
+                        trd_enum = simplices_map[t_o][s[0]]["enum"]
+
+                    if reference is not None:
+                        spot_candidate[t_o]["vertices"][spots_indices_map[t_o][reference]].append(t)
+                        spot_candidate[t_o]["com"][spots_indices_map[t_o][reference]].append(center_of_mass([t])[0])
+                        spot_candidate[t_o]["3rd_enum"][spots_indices_map[t_o][reference]].append(trd_enum)
+                        spot_candidate[t_o]["ref"][spots_indices_map[t_o][reference]].append([idx, s])
+
+            # if at least one of points belongs to t_object, then it is for sure t_object face
+            elif simplices_map[t_o][s[0]]["type"] == "t_object" or \
+                simplices_map[t_o][s[1]]["type"] == "t_object" or \
+                simplices_map[t_o][s[2]]["type"] == "t_object":
+
+                model[t_o]["t_object"].append(np.array(t).tolist())
+                simplex_map[t_o][idx] = [s, -1]
+            else:
+                model[t_o]["t_object"].append(np.array(t).tolist())
+                simplex_map[t_o][idx] = [s, -1]
+
+        # test unclear spots faces
+        # ! enum of spot is same as list index in spots[t_object]
+        # ! spots_indices_map{spot_enum (same as spots[t_object] index of spot): model_number (model variable)}
+        # ! rev_spots_indices_map{model_number: spot_enum (same as spots[t_object] index of spot)}
+
+        if len(spot_candidate[t_o]["com"]) != 0:
+            for spot_reference in spot_candidate[t_o]["com"]:
+                # translate spot_reference from model list order to spot_number (index from original spots list)
+                rev_spot_reference = rev_spots_indices_map[t_o][spot_reference]
+
+                # get center and size of current spot candidate
+                center, size = spots[t_o][rev_spot_reference]["alt_center"], spots[t_o][rev_spot_reference]["size"]
+
+                # compute distance of all center of mass of triangles of current spot candidate to center of
+                # this candidate
+                dists = [np.linalg.norm(np.array(com) - np.array(center))
+                         for com in spot_candidate[t_o]["com"][spot_reference]]
+
+                # test if dist is smaller as size;
+                # if dist is smaller, then current face belongs to spots
+                # otherwise face belongs to t_object itself
+
+                for dist in enumerate(dists):
+                    dist = list(dist)
+                    app = np.array(spot_candidate[t_o]["vertices"][spot_reference][dist[0]]).tolist()
+                    ref = spot_candidate[t_o]["ref"][spot_reference][dist[0]]
+                    if dist[1] < size:
+                        model[t_o]["spots"][spot_reference].append(app)
+                        simplex_map[t_o][ref[0]] = [ref[1], spot_reference]
+
+                        # pre identifikaciu, ktore skvrny su platne, a aby sa teda vratili metadata len z
+                        # existujucich skvrn
+                        if not rev_spots_indices_map[t_o][spot_reference] in meta_indices[t_o]:
+                            meta_indices[t_o].append(rev_spots_indices_map[t_o][spot_reference])
+
+                        continue
+
+                    # make the same computation for 3rd vertex of face
+                    # it might be confusing, but spot candidate is spot where 2 of 3 vertex of face belong to,
+                    # the 3rd index belongs to another (neighbour) spot and it has to be tested
+                    # too, if face finally do not belongs to spot candidate;
+                    # reference to this another spot is saved in 3rd_enum of spot_candidate[t_o][3rd_enum][ref]
+                    # dictionary, referenced by "ref", where "ref" is "spot_reference" variable from above
+                    else:
+                        # in 3rd_enum is directly stored reference to default spots list which comes as
+                        # function parameterclear
+
+                        trd_rev_spot_reference = spot_candidate[t_o]["3rd_enum"][spot_reference][dist[0]]
+                        trd_spot_reference = spots_indices_map[t_o][trd_rev_spot_reference]
+
+                        trd_center = spots[t_o][trd_rev_spot_reference]["alt_center"]
+                        trd_size = spots[t_o][trd_rev_spot_reference]["size"]
+                        com = spot_candidate[t_o]["com"][spot_reference][dist[0]]
+                        dist[1] = np.linalg.norm(np.array(com) - np.array(trd_center))
+
+                        if dist[1] < trd_size:
+                            model[t_o]["spots"][trd_spot_reference].append(app)
+                            simplex_map[t_o][ref[0]] = [ref[1], trd_spot_reference]
+
+                            # pre identifikaciu, ktore skvrny su platne, a aby sa teda vratili metadata len z
+                            # existujucich skvrn
+                            if not rev_spots_indices_map[t_o][trd_spot_reference] in meta_indices[t_o]:
+                                meta_indices[t_o].append(rev_spots_indices_map[t_o][trd_spot_reference])
+                            continue
+                        else:
+                            model[t_o]["t_object"].append(app)
+                            simplex_map[t_o][ref[0]] = [ref[1], -1]
+
+    # vytvorenie metadat pre skvrny, ktore vobec existuju v konecnom dosledku (neboli pohltene inou skrvnou,
+    # pripadne z nich neostal len jeden bod, ktory bol nakoniec v trojuholniku priradeny inde)
+    for t_object in ["primary", "secondary"]:
+        for i in meta_indices[t_object]:
+            meta[t_object].append(metadata[t_object][i])
+
+    if "model" in locals():
+        return model, vertices_t, {"primary": tri["primary"][0], "secondary": tri["secondary"][0]}, simplex_map, meta

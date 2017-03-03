@@ -51,6 +51,8 @@ import objects.Geometry as Geo
 import objects.Atmosphere as Atm
 from scipy import interpolate
 
+from scipy import optimize
+
 
 class Star:
     def __init__(
@@ -61,12 +63,14 @@ class Star:
             effective_temperature=None,  # unit: [K]
             gravity_darkening=None,  # unit: [0 - 1]
             metallicity=None,  # unit: [M/H]
-            albedo=None,  # unit: [0 - 1]
+            albedo=None,  # unit: [0 - 1],
+            angular_velocity=None,  # unit: [s-1] (len v pripade extrasolarnych planet pri moznosti planete="sphere")
             verbose=False,
             atmoshpere="kurucz",
             phi_steps=10,
             theta_steps=20,
-            cgal=None
+            cgal=None,
+            spots_meta=None
     ):
         # <variables>
         if cgal is None:
@@ -75,10 +79,14 @@ class Star:
                     "surface_aproximation_error": 0.3,
                     "to_average_spacing": 5}
 
+        self.spots_meta = spots_meta if None != spots_meta else None
+
+        self.spots = None
         self.cgal = cgal
         self.verbose = verbose
         self.init = True
         self.exception = []
+        self.angular_velocity = angular_velocity
 
         self.phi_steps = phi_steps
         self.theta_steps = theta_steps
@@ -261,6 +269,164 @@ class Star:
             print('</' + str(self.__class__.__name__) + '> -----------------------------------------------')
             print()
 
+    def single_star_potential_fn(self, radius, *args):
+        theta = args[0]
+        return (1.0 / radius) + (0.5 * (self.angular_velocity ** 2) * (radius ** 2) * np.sin(theta)) - self.potential
+
+    def single_start_backward_radius(self):
+        solution, info, ier, msg = optimize.fsolve(self.single_star_potential_fn, self.polar_radius / 5.0,
+                                                   full_output=True, args=(np.pi / 2.0, None))
+
+        return solution[0] if ier == 1 else False
+
+    def single_star_polar_gravity(self, polar_radius=None):
+        # polar_radius in SI units
+        return ((self.mass * gv.GRAVITATIONAL_CONSTANT * gv.SOLAR_MASS) / (polar_radius ** 2.0)) * 1e2  # 1e2 bo CGS
+
+    def single_star_potential_gradient(self, p):
+        x, y, z = p[0], p[1], p[2]
+        denominator = (x ** 2 + y ** 2 + z ** 2) ** (3.0 / 2.0)
+        dodx = (-x / denominator) + ((self.angular_velocity ** 2.0) * x)
+        dody = (-y / denominator) + ((self.angular_velocity ** 2.0) * y)
+        dodz = (-z / denominator)
+        return [-dodx, -dody, -dodz]
+
+    def single_star_polar_gradient_norm(self):
+        polar_vector = np.array([0.0, 0.0, self.polar_radius])
+        normal = self.single_star_normal_estimation(vertices=np.array([polar_vector]), verbose=self.verbose)
+        return np.linalg.norm(x=normal[0])
+
+    def single_star_normal_estimation(self, vertices=None, verbose=False):
+        if verbose:
+            print(Fn.color_string(color="info", string="Info: ") + "Normal estimation is running. Object: Single star.")
+        if Fn.numpy_array_is_empty_verbose(arr=vertices, function_name="single_star_normal_estimation",
+                                           class_name="Star", var_name="vertices", verbose=verbose,
+                                           line=str(Fn.lineno())):
+            return False
+        try:
+            return [self.single_star_potential_gradient(p=v) for v in vertices]
+        except:
+            if verbose:
+                print(Fn.color_string(color="error",
+                                      string="Error: ") + "In class: Star, function: "
+                                                          "single_star_normal_estimation(), line: " + str(
+                    Fn.lineno()) + ". An error occured during normal estimation process.")
+            return False
+
+    # def get_3d_model(self, theta_steps=None, phi_steps=None):
+    #     # aby to bolo konzistentne s hviezdami v binarnom systeme
+    #     phi_steps *= 2.0
+    #
+    #     theta, theta_step = 0.0, np.pi / theta_steps
+    #     points = []
+    #     while theta <= np.pi:
+    #         r = self.polar_radius * np.sin(theta)
+    #         current_phi_steps = 1 if r == 0 else np.ceil((r / self.polar_radius) * phi_steps)
+    #         phi, phi_step = 0.0, 2.0 * np.pi / current_phi_steps
+    #
+    #         while phi < 2.0 * np.pi:
+    #             solution, info, ier, msg = optimize.fsolve(self.single_star_potential_fn, self.polar_radius,
+    #                                                        full_output=True, args=(theta, None))
+    #             # solution = [optimize.newton(self.star_potential_fn, self.polar_radius, args=(polar_angle, ))]
+    #             # print("{:10.20f}".format(solution[0]), np.degrees(polar_angle))
+    #             if ier == 1:
+    #                 points.append(Fn.spheric_to_cartesian(vector=[solution[0], phi, theta]))
+    #
+    #             phi += phi_step
+    #             if theta == 0.0 or theta == np.pi:
+    #                 break
+    #         theta += theta_step
+    #     return points
+
+
+    def get_3d_model(self, phi_steps=None, theta_steps=None):
+        use = False
+        z_point, rotation_angle, transform = None, None, None
+        current_phi_steps, current_theta_steps = phi_steps, theta_steps
+        theta, theta_step_length, partial, equatorial, meridional = np.pi / 2., np.pi / current_theta_steps, [], [], []
+        point_coordinate = np.arange(3, dtype=np.float)
+
+        for rot in range(0, int(current_theta_steps)):
+            vector_spheric, vector_xyz = np.arange(3, dtype=np.float), np.arange(3, dtype=np.float)
+
+            if theta <= np.pi:
+                vector_spheric[0], vector_spheric[1], vector_spheric[2] = 1., np.pi, theta
+            elif theta > np.pi:
+                vector_spheric[0], vector_spheric[1], vector_spheric[2] = 1.0, 0.0, (2.0 * np.pi) - theta
+
+            # if theta <= np.pi:
+            r = self.polar_radius * np.sin(theta - np.pi / 2.0)
+            phi_points = 1 if theta == np.pi / 2.0 else np.ceil((r / self.polar_radius) * current_phi_steps)
+            transform_steps = int(phi_points) if theta == np.pi / 2. else int(phi_points) + 1
+            phi_step_length = (np.pi / 2.) / phi_points
+            rotation_angle = phi_step_length
+
+            for transform in range(0, transform_steps):
+                args, use = (vector_spheric[2], None), False
+
+                try:
+                    solution, info, ier, msg = optimize.fsolve(self.single_star_potential_fn, self.polar_radius / 10.0,
+                                                               full_output=True, args=args)
+                    if ier == 1 and not np.isnan(solution[0]):
+                        use, solution = True, solution[0]
+                except:
+                    use = False
+
+                if use:
+                    # risenie sa ulozi do vektora a pretransformuje prislusnou funkciou zo sferickcyh do kartezianskych suradnic
+                    point_coordinate[0], point_coordinate[1], point_coordinate[2] = solution, vector_spheric[1], \
+                                                                                    vector_spheric[2]
+                    xyz = Fn.spheric_to_cartesian(point_coordinate)
+                    if transform == transform_steps - 1:
+                        equatorial.append(xyz)
+                    elif transform == 0:
+                        meridional.append(xyz)
+                    else:
+                        partial.append(xyz)
+
+                vector_xyz = Fn.spheric_to_cartesian(vector_spheric)
+                rotate = Fn.rotate(vector=vector_xyz, angle=rotation_angle)
+                vector_spheric = Fn.cartesian_to_spheric(rotate)
+                if vector_spheric[1] < 0: vector_spheric[1] += (2. * np.pi)
+
+            theta += theta_step_length
+
+        f_point, equatorial = equatorial[0], equatorial[1:]
+        # zero point (flip x coo of f_point)
+        z_point = [-f_point[0], f_point[1], f_point[2]]
+
+        full = []
+        if not Fn.empty(partial) and not Fn.empty(equatorial) and not Fn.empty(meridional):
+            full.append(f_point)
+            full.append(z_point)
+            for point in partial:
+                full.append(point)
+                full.append([point[0], -point[1], point[2]])
+                full.append([point[0], point[1], -point[2]])
+                full.append([point[0], -point[1], -point[2]])
+
+            for point in equatorial:
+                full.append(point)
+                full.append([point[0], -point[1], point[2]])
+            for point in meridional:
+                full.append(point)
+                full.append([point[0], point[1], -point[2]])
+        else:
+            if self.verbose:
+                print(Fn.color_string(color="error",
+                                      string="ValueError: ") + "In class: Star, function: get_3d_model(), line: " + str(
+                    Fn.lineno()) + ". One of lists (`partial`, `equatorial`, `meridional`) is empty.")
+            return False
+
+        # # <kontrolne plotovanie>
+        # import objects.Plot as Plt
+        # Plt.plot_3d(faces=None, face_color="w", vertices=[full],
+        #                 normals_view=False, points_view=True, faces_view=False, verbose=self.verbose,
+        #                 face_alpha=1.0, azim=30, elev=30, save=False)
+        # # < /kontrolne plotovanie>
+
+        return full
+
     def compute_polar_temperature(
             self
     ):
@@ -283,7 +449,9 @@ class Star:
 
     def compute_temperature_distribution(
             self,
-            indices=None
+            indices=None,
+            spots_meta=None,
+            simplex_map=None
     ):
         if self.verbose:
             print(Fn.color_string("info", "Info: ") + "Computing temperature distribution for " + str(self))
@@ -302,6 +470,14 @@ class Star:
             gravity_darkening_factor = Fn.array_mask(array=self.get_gravity_darkeninig_factor_dsitribution(),
                                                      mask=indices)
             self.local_temperature = gravity_darkening_factor ** 0.25 * self.polar_tempterature
+
+
+            if not Fn.empty(spots_meta) and not Fn.empty(simplex_map):
+                temperature_factor = [tf["temperature_factor"] for tf in spots_meta]
+                for i, j in list(zip(indices, range(0, len(indices)))):
+                    if simplex_map[i][1] != -1:
+                        self.local_temperature[j] *= temperature_factor[simplex_map[i][1]]
+
             return self.local_temperature
         except:
             if self.verbose:
@@ -332,13 +508,8 @@ class Star:
         local_gravity = []
         if Fn.empty(indices): indices = np.arange(0, len(gradnorm), 1)
 
-        for idx in indices:
-            current_g = gradnorm[idx] * self.gravity_scalling_factor if not log else np.log10(
-                gradnorm[idx] * self.gravity_scalling_factor)
-
-            # if current_g > self.get_polar_gravity(): current_g = self.get_polar_gravity()
-
-            local_gravity.append(current_g)
+        local_gravity = np.array(gradnorm) * self.gravity_scalling_factor \
+            if not log else np.log10(np.array(gradnorm)) * self.gravity_scalling_factor
 
         self.local_gravity = np.array(local_gravity)
         self.gradient_norm = gradnorm
@@ -358,8 +529,9 @@ class Star:
                     Fn.lineno()) + ". Variable one of variables (`self.gradient_norm`, `self.polar_gradient_norm`, `self.gravity_darkening`) is empty.")
             return False
         try:
-            gdf = [(self.gradient_norm[idx] / self.polar_gradient_norm) ** self.gravity_darkening for idx in
-                   range(0, len(self.gradient_norm))]
+            # gdf = [(self.gradient_norm[idx] / self.polar_gradient_norm) ** self.gravity_darkening for idx in
+            #        range(0, len(self.gradient_norm))]
+            gdf = np.power(np.array(self.gradient_norm) / self.polar_gradient_norm, self.gravity_darkening)
         except:
             if self.verbose:
                 print(Fn.color_string(color="error",
@@ -502,19 +674,20 @@ class Star:
             # ak je min/max hodnota v distribucii mimo maximalne dovolene extrapolacne/interpolacne pole tak program
             # skonci, nema zmysel pocitat s hodnotami, ktore su s velkou pravdepodobnostou mimo reality
             if 0.0 > g_interval[0] or g_interval[1] > 5.0 or 3500.0 > t_interval[0] or t_interval[1] > 50000.0:
+                print(g_interval, t_interval)
                 if self.verbose:
                     print(Fn.color_string(color="error",
                                           string="ValueError: ") + "In class: Star, function: radiation_power(), line: " + str(
-                        Fn.lineno()) + ". Physical quantities distributien is out of inter/extra - polation range.")
+                        Fn.lineno()) + ". Physical quantities distribution is out of inter/extra - polation range.")
                 self.exception.append("ValueError: In class: Star, function: radiation_power(), line: " + str(
-                    Fn.lineno()) + ". Physical quantities distributien is out of inter/extra - polation range.")
+                    Fn.lineno()) + ". Physical quantities distribution is out of inter/extra - polation range.")
                 return False
 
             # existencna matica
             np.set_printoptions(threshold=np.nan)
             ext_matrix = Fn.chess_matrix(db_name="elisa_assets", band=passband)
 
-            # uvw - pole s hodnotami pre intra/extra polaciu
+            # uvw - pole s hodnotami pre inter/extra polaciu
             # distribution - nove pole pre distibuciu
             distribution, uvw = [], []
 
@@ -539,7 +712,7 @@ class Star:
                     matrix_around_value = np.array([ext_matrix[val[0]][val[1]] for val in a2m_pos])
 
                     # extrapolacia je dovolena len ak je jednotka v poli aspon v 4 pripadoch; ak sa tam nachadza
-                    # v menej pripadoch, tka bud stoji momentalna hodnota v nulovom poli alebo strasne mimo rozsah
+                    # v menej pripadoch, tak bud stoji momentalna hodnota v nulovom poli alebo strasne mimo rozsah
                     the_one = len(np.where(matrix_around_value == 1)[0])
 
                     # for val in a2m_pos:
@@ -617,6 +790,9 @@ class Star:
 
     def set_radiation_power(self, radiation_power=None):
         self.local_radiation_power = radiation_power
+
+    def set_temperature_distribution(self, local_temperature=None):
+        self.local_temperature = local_temperature
 
     # < /SETTERs>
 

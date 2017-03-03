@@ -133,7 +133,7 @@ def gaussian_smooth(lightcurve=None):
     return lightcurve
 
 
-def akima_interpolation(from_photometric_phase, to_photometric_phase, lightcurve=None, mirror=False):
+def akima_interpolation(from_photometric_phase, to_photometric_phase, lightcurve=None, mirror=False, spots=False):
     u, v = np.array(list(zip(*lightcurve))[0]), np.array(list(zip(*lightcurve))[1])
 
     from scipy import interpolate
@@ -143,11 +143,22 @@ def akima_interpolation(from_photometric_phase, to_photometric_phase, lightcurve
     # preco taky krok? lebo pri nom bolo najlepsie vysledky vyhladzovania minim
     step, current, lightcurve = 0.007, interp_start, []
 
-    if mirror:
+    if mirror and not spots:
         while True:
             current_decimal = abs(m.modf(current)[0])
 
             if current_decimal >= 0.5: current_decimal = 1.0 - current_decimal
+            current_value = w(current_decimal)
+            if not np.isnan(current_value):
+                lightcurve.append([current, current_value])
+            current += step
+            if current > interp_stop: break
+    elif mirror and spots:
+        while True:
+            current_decimal = abs(m.modf(current)[0])
+
+            if current < 0: current_decimal = 1.0 - current_decimal
+
             current_value = w(current_decimal)
             if not np.isnan(current_value):
                 lightcurve.append([current, current_value])
